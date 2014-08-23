@@ -1247,6 +1247,40 @@ cpl_not_handled(struct sge_iq *, const struct rss_header *, struct mbuf *);
  */
 void (*tom_cpl_iscsi_callback)(struct tom_data *, struct socket *, void *,
     unsigned int);
+#if 1
+int (*iscsi_ofld_conn)(struct socket *, void *);
+int (*iscsi_ofld_cleanup_conn)(struct socket *);
+void (*iscsi_ofld_setup_ddp)(void *, void *, void *, unsigned int *, int);
+void (*iscsi_ofld_cleanup_io)(void *, void *);
+int (*iscsi_ofld_xmit_pdu)(void *, void *);
+uint32_t (*iscsi_ofld_parse_pdu_tasktag)(struct socket *, uint32_t);
+
+void t4tom_register_iscsi_ofld_callback(int (*fp)(struct socket *, void *))
+{
+        iscsi_ofld_conn = fp;
+}
+
+void t4tom_register_iscsi_ofld_conn_cleanup_callback(int (*fp)(struct socket *))
+{
+        iscsi_ofld_cleanup_conn = fp;
+}
+void t4tom_register_iscsi_ofld_ddp_callback(void (*fp)(void *, void *, void *, unsigned int *, int))
+{
+        iscsi_ofld_setup_ddp = fp;
+}
+void t4tom_register_iscsi_ofld_cleanup_callback(void (*fp)(void *, void *))
+{
+        iscsi_ofld_cleanup_io = fp;
+}
+void t4tom_register_iscsi_ofld_tx_callback(int (*fp)(void *, void *))
+{
+        iscsi_ofld_xmit_pdu = fp;
+}
+void t4tom_register_iscsi_ofld_parse_itt_callback(uint32_t (*fp)(struct socket *, uint32_t))
+{
+        iscsi_ofld_parse_pdu_tasktag = fp;
+}
+#endif
 
 struct mbuf *(*tom_queue_iscsi_callback)(struct socket *, unsigned int, int *);
 /*
