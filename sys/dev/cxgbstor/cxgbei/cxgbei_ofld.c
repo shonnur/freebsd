@@ -589,7 +589,7 @@ cxgbei_task_reserve_itt(struct icl_conn *ic, struct ccb_scsiio *scmd, struct isc
 	}
 	tdata = (cxgbei_task_data *)(task->ofld_priv);
 	if (!xferlen || !tdata) {
-		printf("%s: tdata is NULL\n", __func__);
+		//printf("%s: tdata is NULL\n", __func__);
 		goto out;
 	}
 	if (xferlen < DDP_THRESHOLD)
@@ -1284,6 +1284,7 @@ static int cxgbei_set_ulp_mode(struct socket *so, struct toepcb *toep,
 	return rv;
 }
 
+#if 0
 /* count how many bits needed for a given unsigned value */
 static inline int uint_bits_needed (unsigned long v)
 {
@@ -1297,6 +1298,7 @@ static inline int uint_bits_needed (unsigned long v)
 static void remove_cxgbei_dev(offload_device *odev)
 {
 }
+#endif
 static offload_device *add_cxgbei_dev(struct ifnet *dev, struct toedev *tdev)
 {
 #ifdef T4_DDP

@@ -381,6 +381,7 @@ error_out:
 	return NULL;
 }
 
+#if 0
 /*
  * temp. function for handling the sgl that start from the middle of the 
  * data xfer.
@@ -489,6 +490,7 @@ static int check_sgl_dma_addr_for_ddp(cxgbei_sgl_t *sgl, unsigned int sgcnt,
 
 	return 0;
 }
+#endif
 
 /**
  * cxgbi_ulp2_ddp_release_gl - release a page buffer list
