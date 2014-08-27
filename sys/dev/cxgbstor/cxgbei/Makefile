@@ -1,13 +1,7 @@
 # $FreeBSD$
 
-#CSTOR = ${.CURDIR}/../..
-#CHISCSI = ${CSTOR}/chiscsi
 CXGBESRC = ${.CURDIR}/../../cxgbe
 
-.PATH: ${CHISCSI}/includes/ulp/
-
-#CFLAGS+= -I${CHISCSI}/includes -I${CSTOR}/common \
-	 -I$(CXGBESRC) -I.
 CFLAGS+= -I${CXGBESRC}
 
 CFLAGS +=-DTCP_OFFLOAD

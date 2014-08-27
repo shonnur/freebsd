@@ -779,7 +779,7 @@ static void process_rx_iscsi_hdr(struct socket *sk, struct mbuf *m)
 
 	/* figure out if this is the pdu header or data */
         cb->ulp_mode = ULP_MODE_ISCSI;
-	SOCK_LOCK(sk);
+	mtx_lock(&isock->iscsi_rcv_mbufq.lock);
         if (!isock->mbuf_ulp_lhdr) {
                 iscsi_socket *isock = (iscsi_socket *)(sk)->so_emuldata;
 
@@ -793,7 +793,7 @@ static void process_rx_iscsi_hdr(struct socket *sk, struct mbuf *m)
                                 "tid 0x%x, CPL_ISCSI_HDR, BAD seq got 0x%x exp 0x%x.\n",
                                 toep->tid,
                                 cb->seq, tp->rcv_nxt);
-				SOCK_UNLOCK(sk);
+				mtx_unlock(&isock->iscsi_rcv_mbufq.lock);
                         goto err_out;
                 }
                 byte = m->m_data;
@@ -836,17 +836,13 @@ static void process_rx_iscsi_hdr(struct socket *sk, struct mbuf *m)
                 //printf("sk 0x%p, tid 0x%x skb 0x%p, pdu data, pdulen:%d header 0x%p.\n",
                  //       sk, toep->tid, m, lcb->ulp.iscsi.pdulen, lmbuf);
         }
-	//SOCK_UNLOCK(sk);
 
 #if 0
 	printf("%s: m:%p len:%d cb:%p lmbuf:%p lcb:%p llen:%d pdulen:%d\n",
 		__func__, m, m->m_len, cb, lmbuf, lcb, lmbuf->m_len, lcb->ulp.iscsi.pdulen);
 #endif
-	//mtx_lock(&isock->iscsi_rcv_mbufq.lock);
-	//SOCK_LOCK(sk);
 	mbufq_tail(&isock->iscsi_rcv_mbufq, m);
-	//mtx_unlock(&isock->iscsi_rcv_mbufq.lock);
-	SOCK_UNLOCK(sk);
+	mtx_unlock(&isock->iscsi_rcv_mbufq.lock);
         return;
 
 err_out:
@@ -927,7 +923,7 @@ static void process_rx_data_ddp(struct socket *sk, struct mbuf *m)
                 m_freem(m);
                 return;
         }
-        SOCK_LOCK(sk);
+	mtx_lock(&isock->iscsi_rcv_mbufq.lock);
         lmbuf = isock->mbuf_ulp_lhdr;
         if (lmbuf->m_nextpkt) {
                 lcb1 = find_ulp_mbuf_cb(lmbuf->m_nextpkt);
@@ -936,7 +932,7 @@ static void process_rx_data_ddp(struct socket *sk, struct mbuf *m)
         lcb = find_ulp_mbuf_cb(isock->mbuf_ulp_lhdr);
         if (!lcb) {
                 printf("mtag NULL lmbuf :%p\n", lmbuf);
-                SOCK_UNLOCK(sk);
+		mtx_unlock(&isock->iscsi_rcv_mbufq.lock);
                 return;
         }
         lcb->flags |= SBUF_ULP_FLAG_STATUS_RCVD;
@@ -963,7 +959,6 @@ static void process_rx_data_ddp(struct socket *sk, struct mbuf *m)
         if (!(lcb->flags & SBUF_ULP_FLAG_DATA_RCVD)) {
                 lcb->flags |= SBUF_ULP_FLAG_DATA_DDPED;
 	}
-        //SOCK_UNLOCK(sk);
 #ifdef __T4_DBG_DDP_FAILURE__
 //      else
         {
@@ -994,9 +989,6 @@ static void process_rx_data_ddp(struct socket *sk, struct mbuf *m)
 #endif
 
 	iscsi_conn_receive_pdu(isock);
-        SOCK_UNLOCK(sk);
-
-	m_freem(m);
 
 	/* update rx credits */
 	INP_WLOCK(inp);
@@ -1007,8 +999,8 @@ static void process_rx_data_ddp(struct socket *sk, struct mbuf *m)
 	 //     sk, toep->sb_cc, tp->rcv_nxt, tp->rcv_wnd);
 	t4_rcvd(&toep->td->tod, tp);
 	INP_WUNLOCK(inp);
-
-	//sorwakeup(sk);
+	mtx_unlock(&isock->iscsi_rcv_mbufq.lock);
+	m_freem(m);
 }
 
 static void
