@@ -281,7 +281,8 @@ uint32_t icl_parse_pdu_tasktag(struct socket *so, uint32_t tag)
 {
 #ifdef CHELSIO_OFFLOAD
 	/* remove HW modified bits in itt */
-	return (iscsi_ofld_parse_pdu_tasktag(so, tag));
+	if (iscsi_ofld_parse_pdu_tasktag)
+		return (iscsi_ofld_parse_pdu_tasktag(so, tag));
 #endif /* CHELSIO_OFFLOAD */
 	return tag;
 }
@@ -1126,7 +1127,8 @@ icl_pdu_queue(struct icl_pdu *ip)
 	}
 
 #ifdef CHELSIO_OFFLOAD
-	iscsi_ofld_xmit_pdu(ic, ip);
+	if (iscsi_ofld_xmit_pdu)
+		iscsi_ofld_xmit_pdu(ic, ip);
 #else
 	if (!STAILQ_EMPTY(&ic->ic_to_send)) {
 		STAILQ_INSERT_TAIL(&ic->ic_to_send, ip, ip_next);
@@ -1324,7 +1326,9 @@ icl_conn_handoff(struct icl_conn *ic, int fd)
 	error = icl_conn_start(ic);
 #ifdef CHELSIO_OFFLOAD
 	if(!error)
-		iscsi_ofld_conn(ic->ic_socket, ic);
+		if (iscsi_ofld_conn) {
+			iscsi_ofld_conn(ic->ic_socket, ic);
+		}
 #endif /* CHELSIO_OFFLOAD */
 
 	return (error);
@@ -1391,7 +1395,8 @@ icl_conn_close(struct icl_conn *ic)
 
 	ICL_CONN_UNLOCK(ic);
 #ifdef CHELSIO_OFFLOAD
-		iscsi_ofld_cleanup_conn(ic->ic_socket);
+		if (iscsi_ofld_cleanup_conn)
+			iscsi_ofld_cleanup_conn(ic->ic_socket);
 #endif
 	soclose(ic->ic_socket);
 	ICL_CONN_LOCK(ic);

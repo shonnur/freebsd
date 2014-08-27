@@ -1256,7 +1256,7 @@ int send_set_tcb_field(struct socket *sk, u16 word, u64 mask, u64 val,
         req->val = htobe64(val);
 
         t4_wrq_tx(toep->td->tod.tod_softc, wr);
-	printf("%s: toep:%p set ULP_MODE=2\n", __func__, toep);
+	//printf("%s: toep:%p set ULP_MODE=2\n", __func__, toep);
         return 0;
 }
 

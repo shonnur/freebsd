@@ -2143,7 +2143,8 @@ iscsi_action_scsiio(struct iscsi_session *is, union ccb *ccb)
 
 #ifdef CHELSIO_OFFLOAD
 	/* OFFLOAD SUPPORT: Programm DDP */
-	iscsi_ofld_setup_ddp(is->is_conn, csio, io,
+	if (iscsi_ofld_setup_ddp)
+		iscsi_ofld_setup_ddp(is->is_conn, csio, io,
 				&bhssc->bhssc_initiator_task_tag,0);
 #endif /* CHELSIO_OFFLOAD */
 	if (is->is_immediate_data &&

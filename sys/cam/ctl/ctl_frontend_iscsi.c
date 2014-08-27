@@ -889,7 +889,10 @@ cfiscsi_pdu_handle_data_out(struct icl_pdu *request)
 	cs = PDU_SESSION(request);
 	bhsdo = (struct iscsi_bhs_data_out *)request->ip_bhs;
 #ifdef CHELSIO_OFFLOAD
-        ttt = icl_parse_pdu_tasktag(cs->cs_conn->ic_socket, bhsdo->bhsdo_target_transfer_tag);
+	if (icl_parse_pdu_tasktag)
+	        ttt = icl_parse_pdu_tasktag(cs->cs_conn->ic_socket, bhsdo->bhsdo_target_transfer_tag);
+	else
+		ttt = bhsdo->bhsdo_target_transfer_tag; 
         //printf("%s: bhs_ttt:0x%x ttt:0x%x\n", __func__, bhsdo->bhsdo_target_transfer_tag, ttt);
 #endif
 
@@ -1060,7 +1063,8 @@ extern void (*iscsi_ofld_setup_ddp)(void *, void *, void *, uint32_t *, int);
 static void
 cfiscsi_cdw_remove(struct cfiscsi_session *cs, struct cfiscsi_data_wait *cdw)
 {
-        iscsi_ofld_cleanup_io(cs->cs_conn, cdw->ofld_priv);
+	if (iscsi_ofld_cleanup_io)
+	        iscsi_ofld_cleanup_io(cs->cs_conn, cdw->ofld_priv);
         uma_zfree(cfiscsi_data_wait_zone, cdw);
 }
 #endif
@@ -2647,7 +2651,8 @@ cfiscsi_datamove_out(union ctl_io *io)
 	cdw->cdw_initiator_task_tag = bhssc->bhssc_initiator_task_tag;
 
 #ifdef CHELSIO_OFFLOAD
-	iscsi_ofld_setup_ddp(cs->cs_conn, cdw, io, &target_transfer_tag, 1);
+	if (iscsi_ofld_setup_ddp)
+		iscsi_ofld_setup_ddp(cs->cs_conn, cdw, io, &target_transfer_tag, 1);
 #endif
 	if (cs->cs_immediate_data && io->scsiio.kern_rel_offset <
 	    icl_pdu_data_segment_length(request)) {
