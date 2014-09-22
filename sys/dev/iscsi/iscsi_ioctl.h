@@ -37,7 +37,8 @@
 #endif
 
 #define	ISCSI_PATH		"/dev/iscsi"
-#define	ISCSI_MAX_DATA_SEGMENT_LENGTH	(128 * 1024)
+//#define	ISCSI_MAX_DATA_SEGMENT_LENGTH	(128 * 1024)
+#define	ISCSI_MAX_DATA_SEGMENT_LENGTH	(8 * 1024)
 
 #define	ISCSI_NAME_LEN		224	/* 223 bytes, by RFC 3720, + '\0' */
 #define	ISCSI_ADDR_LEN		47	/* INET6_ADDRSTRLEN + '\0' */

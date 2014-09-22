@@ -544,6 +544,19 @@ icl_pdu_check_data_digest(struct icl_pdu *request, size_t *availablep)
 	return (0);
 }
 
+#if 0
+static void dump_iscsi_bhs(unsigned char *buf)
+{
+	int i = 0;
+	printf("\nISCSI Packet:");
+	for (i = 0; i< 48; i++) {
+		if(!(i % 16))
+			printf("\n");
+		printf("0x%02x ", *buf++);
+	}
+}
+#endif
+
 /*
  * Somewhat contrary to the name, this attempts to receive only one
  * "part" of PDU at a time; call it repeatedly until it returns non-NULL.
@@ -599,6 +612,7 @@ icl_conn_receive_pdu(struct icl_conn *ic, size_t *availablep)
 		 * its length is stored in 8 bit field.
 		 */
 
+		//dump_iscsi_bhs((unsigned char *)request->ip_bhs);
 		len = icl_pdu_data_segment_length(request);
 		if (len > ic->ic_max_data_segment_length) {
 			ICL_WARN("received data segment "
@@ -607,6 +621,7 @@ icl_conn_receive_pdu(struct icl_conn *ic, size_t *availablep)
 			    "dropping connection",
 			    len, ic->ic_max_data_segment_length);
 			error = EINVAL;
+		//dump_iscsi_bhs((unsigned char *)request->ip_bhs);
 			break;
 		}
 
@@ -1325,10 +1340,11 @@ icl_conn_handoff(struct icl_conn *ic, int fd)
 
 	error = icl_conn_start(ic);
 #ifdef CHELSIO_OFFLOAD
-	if(!error)
+	if(!error) {
 		if (iscsi_ofld_conn) {
 			iscsi_ofld_conn(ic->ic_socket, ic);
 		}
+	}
 #endif /* CHELSIO_OFFLOAD */
 
 	return (error);
