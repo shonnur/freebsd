@@ -1960,6 +1960,7 @@ iscsi_outstanding_add(struct iscsi_session *is,
 {
 	struct iscsi_outstanding *io;
 	int error;
+	//uint32_t itt = *initiator_task_tagp;
 
 	ISCSI_SESSION_LOCK_ASSERT(is);
 
@@ -1969,6 +1970,7 @@ iscsi_outstanding_add(struct iscsi_session *is,
 		    "failed to allocate %zd bytes", sizeof(*io));
 		return (NULL);
 	}
+	io->io_initiator_task_tag = *initiator_task_tagp;
 
 #if 0
 	if (ccb != NULL && (ccb->ccb_h.flags & CAM_DIR_MASK) == CAM_DIR_IN) {
@@ -1991,6 +1993,8 @@ iscsi_outstanding_add(struct iscsi_session *is,
 	io->io_initiator_task_tag = *initiator_task_tagp;
 	io->io_ccb = ccb;
 
+	//printf("%s: initial ITT:0x%x modified ITT:0x%x\n",
+	//	__func__, itt, io->io_initiator_task_tag);
 	TAILQ_INSERT_TAIL(&is->is_outstanding, io, io_next);
 
 	return (io);

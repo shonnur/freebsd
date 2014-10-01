@@ -579,7 +579,7 @@ static int t4_sk_ddp_tag_reserve(iscsi_socket *isock, unsigned int xferlen,
 }
 
 static unsigned int
-cxgbei_task_reserve_itt(struct icl_conn *ic, void **prv, struct ccb_scsiio *scmd, struct iscsi_outstanding *task)
+cxgbei_task_reserve_itt(struct icl_conn *ic, void **prv, struct ccb_scsiio *scmd, struct iscsi_outstanding *task, unsigned int *itt)
 {
 	int xferlen = scmd->dxfer_len;
 	cxgbei_task_data *tdata = NULL;
@@ -589,8 +589,8 @@ cxgbei_task_reserve_itt(struct icl_conn *ic, void **prv, struct ccb_scsiio *scmd
 	int err = -1;
         offload_device *odev = isock->s_odev;
 
-	//printf("%s: ENTRY xferlen:0x%x task:%p itt:0x%x\n",
-	//	__func__, xferlen, task, task->io_initiator_task_tag);
+	//printf("%s: ENTRY xferlen:0x%x task:%p itt:0x%x *itt:0x%x\n",
+	//	__func__, xferlen, task, task->io_initiator_task_tag, *itt);
 	if (!task) {
 		printf("%s: task is NULL\n", __func__);
 		return 0;
@@ -612,7 +612,8 @@ cxgbei_task_reserve_itt(struct icl_conn *ic, void **prv, struct ccb_scsiio *scmd
 		}
 		sge = tdata->sgl;
 
-		tdata->sc_ddp_tag = task->io_initiator_task_tag;
+		//tdata->sc_ddp_tag = task->io_initiator_task_tag;
+		tdata->sc_ddp_tag = *itt;
 
 		if (cxgbi_ulp2_sw_tag_usable(&odev->d_tag_format, tdata->sc_ddp_tag)) {
 			err = t4_sk_ddp_tag_reserve(isock, scmd->dxfer_len, sge, tdata->nsge, &tdata->sc_ddp_tag);
@@ -622,9 +623,11 @@ cxgbei_task_reserve_itt(struct icl_conn *ic, void **prv, struct ccb_scsiio *scmd
 	}
 out:
 	if (err < 0)
-		tdata->sc_ddp_tag = cxgbi_ulp2_set_non_ddp_tag(&odev->d_tag_format, task->io_initiator_task_tag);
+		tdata->sc_ddp_tag = cxgbi_ulp2_set_non_ddp_tag(&odev->d_tag_format, *itt);
+		//tdata->sc_ddp_tag = cxgbi_ulp2_set_non_ddp_tag(&odev->d_tag_format, task->io_initiator_task_tag);
 
 	
+	//printf("%s: returning ITT:0x%x *itt:0x%x\n", __func__, tdata->sc_ddp_tag, *itt);
 	return tdata->sc_ddp_tag;
 }
 
@@ -1339,7 +1342,7 @@ void iscsi_ofld_ddp_handler_callback(void *conn, void **prv, void *scmd, void *t
 	if (mode) { /* target */
 		*itt = htonl(cxgbei_task_reserve_ttt(conn, prv, scmd, task));
 	} else { /* initiator */
-		*itt = htonl(cxgbei_task_reserve_itt(conn, prv, scmd, task));
+		*itt = htonl(cxgbei_task_reserve_itt(conn, prv, scmd, task, itt));
 	}
 	return;
 }
