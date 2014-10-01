@@ -11,7 +11,7 @@ CFLAGS += -O2 -g
 
 KMOD= cxgbei
 
-SRCS= cxgbei_ofld.c cxgbi_ulp2_ddp.c
+SRCS= cxgbei_ofld.c icl_cxgbei.c cxgbi_ulp2_ddp.c
 SRCS+=  bus_if.h device_if.h opt_sched.h pci_if.h pcib_if.h opt_ktr.h opt_cam.h
 
 clean:

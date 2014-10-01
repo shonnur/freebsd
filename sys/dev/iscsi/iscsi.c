@@ -60,6 +60,7 @@
 #include "iscsi_ioctl.h"
 #include "iscsi.h"
 #include "icl.h"
+#include "icl_wrappers.h"
 #include "iscsi_proto.h"
 
 #ifdef ICL_KERNEL_PROXY
@@ -165,7 +166,7 @@ static void	iscsi_poll(struct cam_sim *sim);
 static struct iscsi_outstanding	*iscsi_outstanding_find(struct iscsi_session *is,
 		    uint32_t initiator_task_tag);
 static struct iscsi_outstanding	*iscsi_outstanding_add(struct iscsi_session *is,
-		    uint32_t initiator_task_tag, union ccb *ccb);
+		    uint32_t *initiator_task_tag, union ccb *ccb);
 static void	iscsi_outstanding_remove(struct iscsi_session *is,
 		    struct iscsi_outstanding *io);
 
@@ -264,7 +265,7 @@ iscsi_session_logout(struct iscsi_session *is)
 	struct icl_pdu *request;
 	struct iscsi_bhs_logout_request *bhslr;
 
-	request = icl_pdu_new_bhs(is->is_conn, M_NOWAIT);
+	request = icl_conn_new_pdu(is->is_conn, M_NOWAIT);
 	if (request == NULL)
 		return;
 
@@ -574,7 +575,7 @@ iscsi_callout(void *context)
 	if (is->is_timeout < 2)
 		return;
 
-	request = icl_pdu_new_bhs(is->is_conn, M_NOWAIT);
+	request = icl_conn_new_pdu(is->is_conn, M_NOWAIT);
 	if (request == NULL) {
 		ISCSI_SESSION_WARN(is, "failed to allocate PDU");
 		return;
@@ -778,7 +779,7 @@ iscsi_pdu_handle_nop_in(struct icl_pdu *response)
 		icl_pdu_get_data(response, 0, data, datasize);
 	}
 
-	request = icl_pdu_new_bhs(response->ip_conn, M_NOWAIT);
+	request = icl_conn_new_pdu(response->ip_conn, M_NOWAIT);
 	if (request == NULL) {
 		ISCSI_SESSION_WARN(is, "failed to allocate memory; "
 		    "reconnecting");
@@ -1139,7 +1140,7 @@ iscsi_pdu_handle_r2t(struct icl_pdu *response)
 			return;
 		}
 
-		request = icl_pdu_new_bhs(response->ip_conn, M_NOWAIT);
+		request = icl_conn_new_pdu(response->ip_conn, M_NOWAIT);
 		if (request == NULL) {
 			icl_pdu_free(response);
 			iscsi_session_reconnect(is);
@@ -1275,11 +1276,6 @@ iscsi_ioctl_daemon_wait(struct iscsi_softc *sc,
 		return (0);
 	}
 }
-#ifdef CHELSIO_OFFLOAD
-extern void (*iscsi_ofld_conn)(struct socket *, void *);
-extern void (*iscsi_ofld_setup_ddp)(void *, void *, void *, uint32_t *, int);
-extern void (*iscsi_ofld_cleanup_io)(void *, void *);
-#endif /* CHELSIO_OFFLOAD */
 
 static int
 iscsi_ioctl_daemon_handoff(struct iscsi_softc *sc,
@@ -1329,16 +1325,6 @@ iscsi_ioctl_daemon_handoff(struct iscsi_softc *sc,
 	is->is_max_data_segment_length = handoff->idh_max_data_segment_length;
 	is->is_max_burst_length = handoff->idh_max_burst_length;
 	is->is_first_burst_length = handoff->idh_first_burst_length;
-#ifdef CHELSIO_OFFLOAD
-	/* We need a way to set these values by ofld_driver during login phase. 
-	 * iscsi-daemon should query offload_driver on 1)digest settigns 
-	 * 2)max_xmit_data_length and 3)max_rcv_data_length while sending
-	 * LOGIN pdu. */
-	is->is_max_data_segment_length = 8192;
-	is->is_first_burst_length = 8192;
-	printf("%s: is_max_data_segment_length:0x%lx is_first_burst_length:0x%lx\n",
-		__func__, is->is_max_data_segment_length, is->is_first_burst_length);
-#endif /* CHELSIO_OFFLOAD */
 
 	if (handoff->idh_header_digest == ISCSI_DIGEST_CRC32C)
 		is->is_conn->ic_header_crc32c = true;
@@ -1558,7 +1544,7 @@ iscsi_ioctl_daemon_send(struct iscsi_softc *sc,
 		}
 	}
 
-	ip = icl_pdu_new_bhs(is->is_conn, M_WAITOK);
+	ip = icl_conn_new_pdu(is->is_conn, M_WAITOK);
 	memcpy(ip->ip_bhs, ids->ids_bhs, sizeof(*ip->ip_bhs));
 	if (datalen > 0) {
 		error = icl_pdu_append_data(ip, data, datalen, M_WAITOK);
@@ -1686,6 +1672,11 @@ iscsi_ioctl_session_add(struct iscsi_softc *sc, struct iscsi_session_add *isa)
 	is = malloc(sizeof(*is), M_ISCSI, M_ZERO | M_WAITOK);
 	memcpy(&is->is_conf, &isa->isa_conf, sizeof(is->is_conf));
 
+	error = icl_limits(is->is_conf.isc_offload,
+	    &is->is_conf.isc_max_data_segment_length);
+	if (error != 0)
+		return (error);
+
 	sx_xlock(&sc->sc_lock);
 
 	/*
@@ -1710,7 +1701,8 @@ iscsi_ioctl_session_add(struct iscsi_softc *sc, struct iscsi_session_add *isa)
 		return (EBUSY);
 	}
 
-	is->is_conn = icl_conn_new("iscsi", &is->is_lock);
+	is->is_conn = icl_new_conn(is->is_conf.isc_offload,
+	    "iscsi", &is->is_lock);
 	is->is_conn->ic_receive = iscsi_receive_callback;
 	is->is_conn->ic_error = iscsi_error_callback;
 	is->is_conn->ic_prv0 = is;
@@ -1817,6 +1809,7 @@ iscsi_ioctl_session_list(struct iscsi_softc *sc, struct iscsi_session_list *isl)
 		iss.iss_id = is->is_id;
 		strlcpy(iss.iss_target_alias, is->is_target_alias, sizeof(iss.iss_target_alias));
 		strlcpy(iss.iss_reason, is->is_reason, sizeof(iss.iss_reason));
+		strlcpy(iss.iss_offload, is->is_conn->ic_offload, sizeof(iss.iss_offload));
 
 		if (is->is_conn->ic_header_crc32c)
 			iss.iss_header_digest = ISCSI_DIGEST_CRC32C;
@@ -1870,6 +1863,16 @@ iscsi_ioctl_session_modify(struct iscsi_softc *sc,
 	sx_xunlock(&sc->sc_lock);
 
 	memcpy(&is->is_conf, &ism->ism_conf, sizeof(is->is_conf));
+
+	/*
+	 * Right now we don't have a way for userland to override
+	 * this value.
+	 *
+	 * XXX: How to handle errors here?
+	 */
+	icl_limits(is->is_conf.isc_offload,
+	    &is->is_conf.isc_max_data_segment_length);
+
 	ISCSI_SESSION_UNLOCK(is);
 
 	iscsi_session_reconnect(is);
@@ -1930,8 +1933,6 @@ iscsi_outstanding_find(struct iscsi_session *is, uint32_t initiator_task_tag)
 
 	ISCSI_SESSION_LOCK_ASSERT(is);
 
-	initiator_task_tag = icl_parse_pdu_tasktag(
-		is->is_conn->ic_socket, initiator_task_tag);
 	TAILQ_FOREACH(io, &is->is_outstanding, io_next) {
 		if (io->io_initiator_task_tag == initiator_task_tag)
 			return (io);
@@ -1955,26 +1956,43 @@ iscsi_outstanding_find_ccb(struct iscsi_session *is, union ccb *ccb)
 
 static struct iscsi_outstanding *
 iscsi_outstanding_add(struct iscsi_session *is,
-    uint32_t initiator_task_tag, union ccb *ccb)
+    uint32_t *initiator_task_tagp, union ccb *ccb)
 {
 	struct iscsi_outstanding *io;
+	int error;
 
 	ISCSI_SESSION_LOCK_ASSERT(is);
 
-	KASSERT(iscsi_outstanding_find(is, initiator_task_tag) == NULL,
-	    ("initiator_task_tag 0x%x already added", initiator_task_tag));
-
 	io = uma_zalloc(iscsi_outstanding_zone, M_NOWAIT | M_ZERO);
 	if (io == NULL) {
-		ISCSI_SESSION_WARN(is, "failed to allocate %zd bytes", sizeof(*io));
+		ISCSI_SESSION_WARN(is,
+		    "failed to allocate %zd bytes", sizeof(*io));
 		return (NULL);
 	}
-	io->io_initiator_task_tag = initiator_task_tag;
+
+#if 0
+	if (ccb != NULL && (ccb->ccb_h.flags & CAM_DIR_MASK) == CAM_DIR_IN) {
+#endif
+		error = icl_conn_task_setup(is->is_conn, &io->io_prv,
+		    &ccb->csio, io, initiator_task_tagp);
+		if (error != 0) {
+			ISCSI_SESSION_WARN(is,
+			    "icl_task_setup() failed with error %d", error);
+			uma_zfree(iscsi_outstanding_zone, io);
+			return (NULL);
+		}
+#if 0
+	}
+#endif
+
+	KASSERT(iscsi_outstanding_find(is, *initiator_task_tagp) == NULL,
+	    ("initiator_task_tag 0x%x already added", *initiator_task_tagp));
+
+	io->io_initiator_task_tag = *initiator_task_tagp;
 	io->io_ccb = ccb;
-#ifdef CHELSIO_OFFLOAD
-	io->ofld_priv = &io[1];
-#endif /* CHELSIO_OFFLOAD */
+
 	TAILQ_INSERT_TAIL(&is->is_outstanding, io, io_next);
+
 	return (io);
 }
 
@@ -1984,10 +2002,7 @@ iscsi_outstanding_remove(struct iscsi_session *is, struct iscsi_outstanding *io)
 
 	ISCSI_SESSION_LOCK_ASSERT(is);
 
-#ifdef CHELSIO_OFFLOAD
-	/* remove offload driver stuff */
-	iscsi_ofld_cleanup_io(is->is_conn, io->ofld_priv);
-#endif /* CHELSIO_OFFLOAD */
+	icl_conn_task_done(is->is_conn, io->io_prv);
 	TAILQ_REMOVE(&is->is_outstanding, io, io_next);
 	uma_zfree(iscsi_outstanding_zone, io);
 }
@@ -1999,6 +2014,7 @@ iscsi_action_abort(struct iscsi_session *is, union ccb *ccb)
 	struct iscsi_bhs_task_management_request *bhstmr;
 	struct ccb_abort *cab = &ccb->cab;
 	struct iscsi_outstanding *io, *aio;
+	uint32_t initiator_task_tag;
 
 	ISCSI_SESSION_LOCK_ASSERT(is);
 
@@ -2019,23 +2035,16 @@ iscsi_action_abort(struct iscsi_session *is, union ccb *ccb)
 		return;
 	}
 
-	request = icl_pdu_new_bhs(is->is_conn, M_NOWAIT);
+	request = icl_conn_new_pdu(is->is_conn, M_NOWAIT);
 	if (request == NULL) {
 		ccb->ccb_h.status = CAM_RESRC_UNAVAIL;
 		xpt_done(ccb);
 		return;
 	}
 
-	bhstmr = (struct iscsi_bhs_task_management_request *)request->ip_bhs;
-	bhstmr->bhstmr_opcode = ISCSI_BHS_OPCODE_TASK_REQUEST;
-	bhstmr->bhstmr_function = 0x80 | BHSTMR_FUNCTION_ABORT_TASK;
+	initiator_task_tag = is->is_initiator_task_tag++;
 
-	bhstmr->bhstmr_lun = htobe64(CAM_EXTLUN_BYTE_SWIZZLE(ccb->ccb_h.target_lun));
-	bhstmr->bhstmr_initiator_task_tag = is->is_initiator_task_tag;
-	is->is_initiator_task_tag++;
-	bhstmr->bhstmr_referenced_task_tag = aio->io_initiator_task_tag;
-
-	io = iscsi_outstanding_add(is, bhstmr->bhstmr_initiator_task_tag, NULL);
+	io = iscsi_outstanding_add(is, &initiator_task_tag, NULL);
 	if (io == NULL) {
 		icl_pdu_free(request);
 		ccb->ccb_h.status = CAM_RESRC_UNAVAIL;
@@ -2043,6 +2052,15 @@ iscsi_action_abort(struct iscsi_session *is, union ccb *ccb)
 		return;
 	}
 	io->io_datasn = aio->io_initiator_task_tag;
+
+	bhstmr = (struct iscsi_bhs_task_management_request *)request->ip_bhs;
+	bhstmr->bhstmr_opcode = ISCSI_BHS_OPCODE_TASK_REQUEST;
+	bhstmr->bhstmr_function = 0x80 | BHSTMR_FUNCTION_ABORT_TASK;
+
+	bhstmr->bhstmr_lun = htobe64(CAM_EXTLUN_BYTE_SWIZZLE(ccb->ccb_h.target_lun));
+	bhstmr->bhstmr_initiator_task_tag = initiator_task_tag;
+	bhstmr->bhstmr_referenced_task_tag = aio->io_initiator_task_tag;
+
 	iscsi_pdu_queue_locked(request);
 }
 
@@ -2053,6 +2071,7 @@ iscsi_action_scsiio(struct iscsi_session *is, union ccb *ccb)
 	struct iscsi_bhs_scsi_command *bhssc;
 	struct ccb_scsiio *csio;
 	struct iscsi_outstanding *io;
+	uint32_t initiator_task_tag;
 	size_t len;
 	int error;
 
@@ -2073,8 +2092,22 @@ iscsi_action_scsiio(struct iscsi_session *is, union ccb *ccb)
 	}
 #endif
 
-	request = icl_pdu_new_bhs(is->is_conn, M_NOWAIT);
+	request = icl_conn_new_pdu(is->is_conn, M_NOWAIT);
 	if (request == NULL) {
+		if ((ccb->ccb_h.status & CAM_DEV_QFRZN) == 0) {
+			xpt_freeze_devq(ccb->ccb_h.path, 1);
+			ISCSI_SESSION_DEBUG(is, "freezing devq");
+		}
+		ccb->ccb_h.status = CAM_RESRC_UNAVAIL | CAM_DEV_QFRZN;
+		xpt_done(ccb);
+		return;
+	}
+
+	initiator_task_tag = is->is_initiator_task_tag++;
+
+	io = iscsi_outstanding_add(is, &initiator_task_tag, ccb);
+	if (io == NULL) {
+		icl_pdu_free(request);
 		if ((ccb->ccb_h.status & CAM_DEV_QFRZN) == 0) {
 			xpt_freeze_devq(ccb->ccb_h.path, 1);
 			ISCSI_SESSION_DEBUG(is, "freezing devq");
@@ -2117,9 +2150,7 @@ iscsi_action_scsiio(struct iscsi_session *is, union ccb *ccb)
 		bhssc->bhssc_flags |= BHSSC_FLAGS_ATTR_UNTAGGED;
 
 	bhssc->bhssc_lun = htobe64(CAM_EXTLUN_BYTE_SWIZZLE(ccb->ccb_h.target_lun));
-	bhssc->bhssc_initiator_task_tag =
-		icl_build_tasktag(is->is_initiator_task_tag, maxtags);
-	is->is_initiator_task_tag++;
+	bhssc->bhssc_initiator_task_tag = initiator_task_tag;
 	bhssc->bhssc_expected_data_transfer_length = htonl(csio->dxfer_len);
 	KASSERT(csio->cdb_len <= sizeof(bhssc->bhssc_cdb),
 	    ("unsupported CDB size %zd", (size_t)csio->cdb_len));
@@ -2129,24 +2160,6 @@ iscsi_action_scsiio(struct iscsi_session *is, union ccb *ccb)
 	else
 		memcpy(&bhssc->bhssc_cdb, csio->cdb_io.cdb_bytes, csio->cdb_len);
 
-	io = iscsi_outstanding_add(is, bhssc->bhssc_initiator_task_tag, ccb);
-	if (io == NULL) {
-		icl_pdu_free(request);
-		if ((ccb->ccb_h.status & CAM_DEV_QFRZN) == 0) {
-			xpt_freeze_devq(ccb->ccb_h.path, 1);
-			ISCSI_SESSION_DEBUG(is, "freezing devq");
-		}
-		ccb->ccb_h.status = CAM_RESRC_UNAVAIL | CAM_DEV_QFRZN;
-		xpt_done(ccb);
-		return;
-	}
-
-#ifdef CHELSIO_OFFLOAD
-	/* OFFLOAD SUPPORT: Programm DDP */
-	if (iscsi_ofld_setup_ddp)
-		iscsi_ofld_setup_ddp(is->is_conn, csio, io,
-				&bhssc->bhssc_initiator_task_tag,0);
-#endif /* CHELSIO_OFFLOAD */
 	if (is->is_immediate_data &&
 	    (csio->ccb_h.flags & CAM_DIR_MASK) == CAM_DIR_OUT) {
 		len = csio->dxfer_len;
@@ -2198,8 +2211,7 @@ iscsi_action(struct cam_sim *sim, union ccb *ccb)
 		cpi->hba_misc = PIM_EXTLUNS;
 		cpi->hba_eng_cnt = 0;
 		cpi->max_target = 0;
-		//cpi->max_lun = 0;
-		cpi->max_lun = 255;
+		cpi->max_lun = 0;
 		cpi->initiator_id = ~0;
 		strlcpy(cpi->sim_vid, "FreeBSD", SIM_IDLEN);
 		strlcpy(cpi->hba_vid, "iSCSI", HBA_IDLEN);
@@ -2292,18 +2304,9 @@ iscsi_load(void)
 	TAILQ_INIT(&sc->sc_sessions);
 	cv_init(&sc->sc_cv, "iscsi_cv");
 
-#ifdef CHELSIO_OFFLOAD
-	/* allocate space for offload module to keep its per-task metadata
-	 * need a way for offload driver to pass the size. For now I am
-	 * allocating 16K. */
-	iscsi_outstanding_zone = uma_zcreate("iscsi_outstanding",
-	    sizeof(struct iscsi_outstanding) + (16 * 1024), NULL, NULL, NULL, NULL,
-	    UMA_ALIGN_PTR, 0);
-#else
 	iscsi_outstanding_zone = uma_zcreate("iscsi_outstanding",
 	    sizeof(struct iscsi_outstanding), NULL, NULL, NULL, NULL,
 	    UMA_ALIGN_PTR, 0);
-#endif /* CHELSIO_OFFLOAD */
 
 	error = make_dev_p(MAKEDEV_CHECKNAME, &sc->sc_cdev, &iscsi_cdevsw,
 	    NULL, UID_ROOT, GID_WHEEL, 0600, "iscsi");
@@ -2396,10 +2399,5 @@ moduledata_t iscsi_data = {
 };
 
 DECLARE_MODULE(iscsi, iscsi_data, SI_SUB_DRIVERS, SI_ORDER_MIDDLE);
-#ifdef CHELSIO_OFFLOAD
-/* This is required since I am  calling t4_tom functions directly.
- * once we decide on the interface details this can be removed */
-MODULE_DEPEND(iscsi, t4_tom, 1, 1, 1);
-#endif /* CHELSIO_OFFLOAD */
 MODULE_DEPEND(iscsi, cam, 1, 1, 1);
 MODULE_DEPEND(iscsi, icl, 1, 1, 1);

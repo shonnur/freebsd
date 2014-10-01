@@ -61,7 +61,6 @@
 #include <dev/iscsi/iscsi_proto.h>
 #include <dev/iscsi/iscsi_ioctl.h>
 #include <dev/iscsi/iscsi.h>
-//#include "cxgbei_ofld.h"
 
 SYSCTL_NODE(_kern_icl, OID_AUTO, cxgbei, CTLFLAG_RD, 0, "Chelsio iSCSI offload");
 static int coalesce = 1;
@@ -93,7 +92,7 @@ static volatile u_int	icl_ncons;
 
 STAILQ_HEAD(icl_pdu_stailq, icl_pdu);
 
-icl_conn_new_pdu_t	icl_cxgbei_conn_new_pdu;
+static icl_conn_new_pdu_t	icl_cxgbei_conn_new_pdu;
 static icl_conn_pdu_free_t	icl_cxgbei_conn_pdu_free;
 static icl_conn_pdu_data_segment_length_t
 				    icl_cxgbei_conn_pdu_data_segment_length;
@@ -131,7 +130,6 @@ static kobj_method_t icl_cxgbei_methods[] = {
 };
 
 DEFINE_CLASS(icl_cxgbei, icl_cxgbei_methods, sizeof(struct icl_conn));
-//DEFINE_CLASS(cxgbei, icl_cxgbei_methods, sizeof(struct icl_conn));
 
 void icl_pdu_free(struct icl_pdu *ip);
 void icl_pdu_set_data_segment_length(struct icl_pdu *response, uint32_t len);
@@ -1675,7 +1673,7 @@ int icl_cxgbei_unload(void)
 	return (0);
 }
 
-#if 0
+#if 1
 static int
 icl_cxgbei_modevent(module_t mod, int what, void *arg)
 {

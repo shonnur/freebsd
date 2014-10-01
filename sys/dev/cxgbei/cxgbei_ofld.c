@@ -45,6 +45,7 @@
 #include <dev/iscsi/iscsi_proto.h>
 #include <dev/iscsi/iscsi_ioctl.h>
 #include <dev/iscsi/iscsi.h>
+//#include <dev/iscsi/icl_wrappers.h>
 #include <cam/ctl/ctl_frontend_iscsi.h>
 
 #include <cam/cam.h>
@@ -1589,12 +1590,14 @@ cxgbei_loader(struct module *mod, int cmd, void *arg)
 
 	switch (cmd) {
 	case MOD_LOAD:
+#if 0
 		err = icl_cxgbei_load();
 		if (err != 0) {
 			printf("cxgbei_init failed for chiscsi_t4.\n");
 			err = (ENOMEM);
 			break;
 		}
+#endif
 		err = cxgbei_init();
 		if (err != 0) {
 			printf("cxgbei_init failed for chiscsi_t4.\n");
@@ -1604,7 +1607,7 @@ cxgbei_loader(struct module *mod, int cmd, void *arg)
 		printf("cxgbei module loaded Sucessfully.\n");
 		break;
 	case MOD_UNLOAD:
-		err = icl_cxgbei_unload();
+		//err = icl_cxgbei_unload();
 		cxgbei_cleanup();
 		printf("cxgbei cleanup completed sucessfully.\n");
 		break;
