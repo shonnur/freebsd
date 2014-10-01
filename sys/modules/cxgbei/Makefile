@@ -22,7 +22,7 @@ SRCS+=	opt_cam.h
 #SRCS+=  cxgbei_ofld.c
 #SRCS+=  icl_cxgbei.c
 #SRCS+= 	cxgbi_ulp2_ddp.c 
-SRCS+=	icl_conn_if.c
+#SRCS+=	icl_conn_if.c
 SRCS+=	icl_conn_if.h
 
 CFLAGS+= -I${CXGBE}
@@ -30,6 +30,6 @@ CFLAGS +=-DTCP_OFFLOAD
 CFLAGS +=-DCHELSIO_OFFLOAD
 #CFLAGS+= -I${.CURDIR}/../../ofed/include
 
-MFILES=	kern/bus_if.m kern/device_if.m dev/cxgbei/icl_conn_if.m dev/pci/pci_if.m
+MFILES=	kern/bus_if.m kern/device_if.m dev/iscsi/icl_conn_if.m dev/pci/pci_if.m
 
 .include <bsd.kmod.mk>
