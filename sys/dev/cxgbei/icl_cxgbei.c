@@ -61,6 +61,7 @@
 #include <dev/iscsi/iscsi_proto.h>
 #include <dev/iscsi/iscsi_ioctl.h>
 #include <dev/iscsi/iscsi.h>
+#include "cxgbei_ofld.h"
 
 SYSCTL_NODE(_kern_icl, OID_AUTO, cxgbei, CTLFLAG_RD, 0, "Chelsio iSCSI offload");
 static int coalesce = 1;
@@ -92,7 +93,7 @@ static volatile u_int	icl_ncons;
 
 STAILQ_HEAD(icl_pdu_stailq, icl_pdu);
 
-static icl_conn_new_pdu_t	icl_cxgbei_conn_new_pdu;
+icl_conn_new_pdu_t	icl_cxgbei_conn_new_pdu;
 static icl_conn_pdu_free_t	icl_cxgbei_conn_pdu_free;
 static icl_conn_pdu_data_segment_length_t
 				    icl_cxgbei_conn_pdu_data_segment_length;
@@ -131,19 +132,16 @@ static kobj_method_t icl_cxgbei_methods[] = {
 
 DEFINE_CLASS(icl_cxgbei, icl_cxgbei_methods, sizeof(struct icl_conn));
 
-void icl_pdu_free(struct icl_pdu *ip);
+/* TODO: can we declare these functions in icl.h file ? */
 void icl_pdu_set_data_segment_length(struct icl_pdu *response, uint32_t len);
 size_t icl_pdu_padding(const struct icl_pdu *ip);
+
 /*
  * XXX
  */
 static void	icl_conn_close(struct icl_conn *ic);
 
-extern int iscsi_ofld_conn_handler_callback(struct socket *so, void *conn);
-extern int iscsi_ofld_conn_cleanup_handler_callback(struct socket *so);
-extern void iscsi_ofld_ddp_handler_callback(void *conn, void **prv, void *scmd, void *task, unsigned int *itt, int mode);
-extern void iscsi_ofld_cleanup_handler_callback(void *conn, void *ofld_priv);
-extern int iscsi_ofld_tx_handler_callback(void *conn, void *ioreq);
+#if 0
 static void
 icl_conn_fail(struct icl_conn *ic)
 {
@@ -156,7 +154,9 @@ icl_conn_fail(struct icl_conn *ic)
 	ic->ic_socket->so_error = EDOOFUS;
 	(ic->ic_error)(ic);
 }
+#endif
 
+#if 0
 static struct mbuf *
 icl_conn_receive(struct icl_conn *ic, size_t len)
 {
@@ -164,6 +164,7 @@ icl_conn_receive(struct icl_conn *ic, size_t len)
 	struct socket *so;
 	struct mbuf *m;
 	int error, flags;
+printf("%s:%d ENTRY\n", __func__, __LINE__);
 
 	so = ic->ic_socket;
 
@@ -184,6 +185,7 @@ icl_conn_receive(struct icl_conn *ic, size_t len)
 
 	return (m);
 }
+#endif
 
 static struct icl_pdu *
 icl_conn_new_empty_pdu(struct icl_conn *ic, int flags)
@@ -207,7 +209,7 @@ icl_conn_new_empty_pdu(struct icl_conn *ic, int flags)
 	return (ip);
 }
 
-void
+static void
 icl_pdu_free(struct icl_pdu *ip)
 {
 	struct icl_conn *ic;
@@ -255,12 +257,14 @@ icl_cxgbei_conn_new_pdu(struct icl_conn *ic, int flags)
 	return (ip);
 }
 
+#if 0
 static int
 icl_pdu_ahs_length(const struct icl_pdu *request)
 {
 
 	return (request->ip_bhs->bhs_total_ahs_len * 4);
 }
+#endif
 
 static size_t
 icl_pdu_data_segment_length(const struct icl_pdu *request)
@@ -303,11 +307,13 @@ icl_pdu_padding(const struct icl_pdu *ip)
 	return (0);
 }
 
+#if 0
 static size_t
 icl_pdu_size(const struct icl_pdu *response)
 {
 	size_t len;
 
+printf("%s:%d ENTRY\n", __func__, __LINE__);
 	KASSERT(response->ip_ahs_len == 0, ("responding with AHS"));
 
 	len = sizeof(struct iscsi_bhs) + response->ip_data_len +
@@ -319,9 +325,9 @@ icl_pdu_size(const struct icl_pdu *response)
 
 	return (len);
 }
+#endif
 
 #ifdef CHELSIO_OFFLOAD
-//extern int (*iscsi_ofld_xmit_pdu)(void *, void *);
 
 static uint32_t
 icl_conn_build_tasktag(struct icl_conn *ic, uint32_t tag)
@@ -334,11 +340,13 @@ icl_conn_build_tasktag(struct icl_conn *ic, uint32_t tag)
 }
 #endif /* CHELSIO_OFFLOAD */
 
+#if 0
 static int
 icl_pdu_receive_bhs(struct icl_pdu *request, size_t *availablep)
 {
 	struct mbuf *m;
 
+printf("%s:%d ENTRY\n", __func__, __LINE__);
 	m = icl_conn_receive(request->ip_conn, sizeof(struct iscsi_bhs));
 	if (m == NULL) {
 		ICL_DEBUG("failed to receive BHS");
@@ -367,6 +375,7 @@ static int
 icl_pdu_receive_ahs(struct icl_pdu *request, size_t *availablep)
 {
 
+printf("%s:%d ENTRY\n", __func__, __LINE__);
 	request->ip_ahs_len = icl_pdu_ahs_length(request);
 	if (request->ip_ahs_len == 0)
 		return (0);
@@ -387,6 +396,7 @@ icl_mbuf_to_crc32c(const struct mbuf *m0)
 {
 	uint32_t digest = 0xffffffff;
 	const struct mbuf *m;
+printf("%s:%d ENTRY\n", __func__, __LINE__);
 
 	for (m = m0; m != NULL; m = m->m_next)
 		digest = calculate_crc32c(digest,
@@ -403,6 +413,7 @@ icl_pdu_check_header_digest(struct icl_pdu *request, size_t *availablep)
 	struct mbuf *m;
 	uint32_t received_digest, valid_digest;
 
+printf("%s:%d ENTRY\n", __func__, __LINE__);
 	if (request->ip_conn->ic_header_crc32c == false)
 		return (0);
 
@@ -440,6 +451,7 @@ icl_pdu_data_segment_receive_len(const struct icl_pdu *request)
 {
 	size_t len;
 
+printf("%s:%d ENTRY\n", __func__, __LINE__);
 	len = icl_pdu_data_segment_length(request);
 	if (len == 0)
 		return (0);
@@ -491,6 +503,7 @@ icl_pdu_receive_data_segment(struct icl_pdu *request,
 	size_t len, padding = 0;
 	struct mbuf *m;
 
+printf("%s:%d ENTRY\n", __func__, __LINE__);
 	ic = request->ip_conn;
 
 	*more_neededp = false;
@@ -558,6 +571,7 @@ icl_pdu_check_data_digest(struct icl_pdu *request, size_t *availablep)
 	struct mbuf *m;
 	uint32_t received_digest, valid_digest;
 
+printf("%s:%d ENTRY\n", __func__, __LINE__);
 	if (request->ip_conn->ic_data_crc32c == false)
 		return (0);
 
@@ -590,20 +604,24 @@ icl_pdu_check_data_digest(struct icl_pdu *request, size_t *availablep)
 
 	return (0);
 }
+#endif
 
 /*
  * Somewhat contrary to the name, this attempts to receive only one
  * "part" of PDU at a time; call it repeatedly until it returns non-NULL.
  */
+#if 0
 static struct icl_pdu *
 icl_conn_receive_pdu(struct icl_conn *ic, size_t *availablep)
 {
+printf("%s:%d ENTRY\n", __func__, __LINE__);
 	struct icl_pdu *request;
 	struct socket *so;
 	size_t len;
 	int error;
 	bool more_needed;
 
+printf("%s:%d ENTRY\n", __func__, __LINE__);
 	so = ic->ic_socket;
 
 	if (ic->ic_receive_state == ICL_CONN_STATE_BHS) {
@@ -742,7 +760,9 @@ icl_conn_receive_pdu(struct icl_conn *ic, size_t *availablep)
 
 	return (NULL);
 }
+#endif
 
+#if 0
 static void
 icl_conn_receive_pdus(struct icl_conn *ic, size_t available)
 {
@@ -750,6 +770,7 @@ icl_conn_receive_pdus(struct icl_conn *ic, size_t available)
 	struct socket *so;
 
 	so = ic->ic_socket;
+printf("%s:%d ENTRY\n", __func__, __LINE__);
 
 	/*
 	 * This can never happen; we're careful to only mess with ic->ic_socket
@@ -797,7 +818,9 @@ icl_conn_receive_pdus(struct icl_conn *ic, size_t available)
 		(ic->ic_receive)(response);
 	}
 }
+#endif
 
+#if 0 
 static void
 icl_receive_thread(void *arg)
 {
@@ -841,6 +864,7 @@ icl_receive_thread(void *arg)
 	ICL_CONN_UNLOCK(ic);
 	kthread_exit();
 }
+#endif
 
 static int
 icl_soupcall_receive(struct socket *so, void *arg, int waitflag)
@@ -855,6 +879,7 @@ icl_soupcall_receive(struct socket *so, void *arg, int waitflag)
 	return (SU_OK);
 }
 
+#if 0
 static int
 icl_pdu_finalize(struct icl_pdu *request)
 {
@@ -863,6 +888,7 @@ icl_pdu_finalize(struct icl_pdu *request)
 	int ok;
 	struct icl_conn *ic;
 
+printf("%s:%d ENTRY\n", __func__, __LINE__);
 	ic = request->ip_conn;
 
 	icl_pdu_set_data_segment_length(request, request->ip_data_len);
@@ -909,7 +935,9 @@ icl_pdu_finalize(struct icl_pdu *request)
 
 	return (0);
 }
+#endif
 
+#if 0
 static void
 icl_conn_send_pdus(struct icl_conn *ic, struct icl_pdu_stailq *queue)
 {
@@ -917,6 +945,7 @@ icl_conn_send_pdus(struct icl_conn *ic, struct icl_pdu_stailq *queue)
 	struct socket *so;
 	size_t available, size, size2;
 	int coalesced, error;
+printf("%s:%d ENTRY\n", __func__, __LINE__);
 
 	ICL_CONN_LOCK_ASSERT_NOT(ic);
 
@@ -1022,7 +1051,9 @@ icl_conn_send_pdus(struct icl_conn *ic, struct icl_pdu_stailq *queue)
 		icl_pdu_free(request);
 	}
 }
+#endif
 
+#if 0
 static void
 icl_send_thread(void *arg)
 {
@@ -1093,6 +1124,7 @@ icl_send_thread(void *arg)
 	ICL_CONN_UNLOCK(ic);
 	kthread_exit();
 }
+#endif
 
 static int
 icl_soupcall_send(struct socket *so, void *arg, int waitflag)
@@ -1188,9 +1220,9 @@ icl_pdu_queue(struct icl_pdu *ip)
 	}
 
 #ifdef CHELSIO_OFFLOAD
-	//iscsi_ofld_xmit_pdu(ic, ip);
 	iscsi_ofld_tx_handler_callback(ic, ip);
 #else
+#if 0
 	if (!STAILQ_EMPTY(&ic->ic_to_send)) {
 		STAILQ_INSERT_TAIL(&ic->ic_to_send, ip, ip_next);
 		/*
@@ -1203,6 +1235,7 @@ icl_pdu_queue(struct icl_pdu *ip)
 
 	STAILQ_INSERT_TAIL(&ic->ic_to_send, ip, ip_next);
 	cv_signal(&ic->ic_send_cv);
+#endif
 #endif
 }
 
@@ -1318,6 +1351,7 @@ icl_conn_start(struct icl_conn *ic)
 	/*
 	 * Start threads.
 	 */
+#if 0
 	error = kthread_add(icl_send_thread, ic, NULL, NULL, 0, 0, "%stx",
 	    ic->ic_name);
 	if (error != 0) {
@@ -1333,6 +1367,7 @@ icl_conn_start(struct icl_conn *ic)
 		icl_conn_close(ic);
 		return (error);
 	}
+#endif
 
 	/*
 	 * Register socket upcall, to get notified about incoming PDUs
@@ -1368,7 +1403,6 @@ icl_cxgbei_conn_handoff(struct icl_conn *ic, int fd)
 	 */
 	error = fget(curthread, fd,
 	    cap_rights_init(&rights, CAP_SOCK_CLIENT), &fp);
-	printf("%s:%d error:%d\n", __func__, __LINE__, error);
 	if (error != 0)
 		return (error);
 	if (fp->f_type != DTYPE_SOCKET) {
@@ -1399,7 +1433,6 @@ icl_cxgbei_conn_handoff(struct icl_conn *ic, int fd)
 	ICL_CONN_UNLOCK(ic);
 
 	error = icl_conn_start(ic);
-	printf("%s:%d eeror:%d\n", __func__, __LINE__, error);
 #ifdef CHELSIO_OFFLOAD
 	if(!error) {
 		//iscsi_ofld_conn(ic->ic_socket, ic);
@@ -1529,11 +1562,6 @@ icl_cxgbei_conn_connected(struct icl_conn *ic)
 	return (true);
 }
 
-#ifdef CHELSIO_OFFLOAD
-//extern void (*iscsi_ofld_setup_ddp)(void *, void *, void *, void *, uint32_t *, int);
-//extern void (*iscsi_ofld_cleanup_io)(void *ic, void *prv);
-#endif
-
 int
 icl_cxgbei_conn_task_setup(struct icl_conn *ic, void **prvp, struct ccb_scsiio *csio,
     void *iop2, uint32_t *tag)
@@ -1550,7 +1578,7 @@ icl_cxgbei_conn_task_setup(struct icl_conn *ic, void **prvp, struct ccb_scsiio *
 	*prvp = prv;
 
 	//iscsi_ofld_setup_ddp(ic, prvp, csio, iop2, tag, 0);
-	iscsi_ofld_ddp_handler_callback(ic, prvp, csio, iop2, tag, 0);
+	iscsi_ofld_ddp_task_handler_callback(ic, prvp, csio, iop2, tag);
 #endif
 
 	return (0);
@@ -1567,6 +1595,8 @@ icl_cxgbei_conn_task_done(struct icl_conn *ic, void *prv)
 #endif
 }
 
+/* icl_conn_transfer_setup(cs->cs_conn, &cdw->cdw_prv, io, cdw,
+		target_transfer_tagp) */
 int
 icl_cxgbei_conn_transfer_setup(struct icl_conn *ic, void **prvp, union ctl_io *io,
     void *iop2, uint32_t *tag)
@@ -1583,7 +1613,7 @@ icl_cxgbei_conn_transfer_setup(struct icl_conn *ic, void **prvp, union ctl_io *i
 	*prvp = prv;
 
 	//iscsi_ofld_setup_ddp(ic, prvp, iop, iop2, tag, 1);
-	iscsi_ofld_ddp_handler_callback(ic, prvp, io, iop2, tag, 1);
+	iscsi_ofld_ddp_transfer_handler_callback(ic, prvp, io, iop2, tag);
 #endif
 
 	return (0);
@@ -1605,6 +1635,7 @@ icl_cxgbei_limits(size_t *limitp)
 {
 
 	*limitp = 8 * 1024;
+	printf("%s: limits:%zu\n", __func__, *limitp);
 
 	return (0);
 }
@@ -1696,10 +1727,5 @@ moduledata_t icl_cxgbei_data = {
 
 DECLARE_MODULE(icl_cxgbei, icl_cxgbei_data, SI_SUB_DRIVERS, SI_ORDER_MIDDLE);
 MODULE_DEPEND(icl_cxgbei, icl, 1, 1, 1);
-#ifdef CHELSIO_OFFLOAD
-/* This is required since I am  calling t4_tom functions directly.
- * once we decide on the interface details this can be removed */
-MODULE_DEPEND(icl_cxgbei, t4_tom, 1, 1, 1);
-#endif /* CHELSIO_OFFLOAD */
 MODULE_VERSION(icl_cxgbei, 1);
 #endif

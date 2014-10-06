@@ -123,20 +123,20 @@ enum {
  * etc.
  */
 struct ulp_mbuf_cb {
-        u8 ulp_mode;                    /* ULP mode/submode of sk_buff */
-        u8 flags;                       /* TCP-like flags */
-        u32 seq;                        /* TCP sequence number */
+        uint8_t ulp_mode;                    /* ULP mode/submode of sk_buff */
+        uint8_t flags;                       /* TCP-like flags */
+        uint32_t seq;                        /* TCP sequence number */
         union { /* ULP-specific fields */
                 struct {
-                        u32 ddigest;    /* ULP rx_data_ddp selected field */
-                        u32 pdulen;     /* ULP rx_data_ddp selected field */
+                        uint32_t ddigest;    /* ULP rx_data_ddp selected field */
+                        uint32_t pdulen;     /* ULP rx_data_ddp selected field */
                 } iscsi;
                 struct {
-                        u32 offset;     /* ULP DDP offset notification */
-                        u8 flags;       /* ULP DDP flags ... */
+                        uint32_t offset;     /* ULP DDP offset notification */
+                        uint8_t flags;       /* ULP DDP flags ... */
                 } ddp;
         } ulp;
-        u8 ulp_data[16];                /* scratch area for ULP */
+        uint8_t ulp_data[16];                /* scratch area for ULP */
         void *pdu;                      /* pdu pointer */
 };
 
@@ -163,5 +163,10 @@ enum {
 
 #define ODEV_FLAG_ULP_ENABLED   \
         (ODEV_FLAG_ULP_CRC_ENABLED | ODEV_FLAG_ULP_DDP_ENABLED)
-
+int iscsi_ofld_conn_handler_callback(struct socket *so, void *conn);
+int iscsi_ofld_conn_cleanup_handler_callback(struct socket *so);
+void iscsi_ofld_ddp_task_handler_callback(void *conn, void **prv, void *scmd, void *task, unsigned int *itt);
+void iscsi_ofld_ddp_transfer_handler_callback(void *conn, void **prv, void *scmd, void *task, unsigned int *ttt);
+void iscsi_ofld_cleanup_handler_callback(void *conn, void *ofld_priv);
+int iscsi_ofld_tx_handler_callback(void *conn, void *ioreq);
 #endif

@@ -45,7 +45,7 @@
 #include <dev/iscsi/iscsi_proto.h>
 #include <dev/iscsi/iscsi_ioctl.h>
 #include <dev/iscsi/iscsi.h>
-//#include <dev/iscsi/icl_wrappers.h>
+#include <dev/iscsi/icl_wrappers.h>
 #include <cam/ctl/ctl_frontend_iscsi.h>
 
 #include <cam/cam.h>
@@ -60,13 +60,9 @@
 #include <cam/scsi/scsi_all.h>
 #include <cam/scsi/scsi_message.h>
 
-extern int icl_cxgbei_load(void);
-extern int icl_cxgbei_unload(void);
-extern struct icl_pdu * icl_cxgbei_conn_new_pdu(struct icl_conn *ic, int flags);
-
-void icl_pdu_free(struct icl_pdu *ip);
 void icl_pdu_set_data_segment_length(struct icl_pdu *response, uint32_t len);
 size_t icl_pdu_padding(const struct icl_pdu *ip);
+
 struct ulp_mbuf_cb * get_ulp_mbuf_cb(struct mbuf *m)
 {
 	struct m_tag    *mtag = NULL;
@@ -591,10 +587,12 @@ cxgbei_task_reserve_itt(struct icl_conn *ic, void **prv, struct ccb_scsiio *scmd
 
 	//printf("%s: ENTRY xferlen:0x%x task:%p itt:0x%x *itt:0x%x\n",
 	//	__func__, xferlen, task, task->io_initiator_task_tag, *itt);
+#if 0
 	if (!task) {
 		printf("%s: task is NULL\n", __func__);
 		return 0;
 	}
+#endif
 	//tdata = (cxgbei_task_data *)(task->ofld_priv);
 	tdata = (cxgbei_task_data *)*prv;
 	if (!xferlen || !tdata) {
@@ -632,7 +630,8 @@ out:
 }
 
 static unsigned int
-cxgbei_task_reserve_ttt(struct icl_conn *ic, void **prv, struct cfiscsi_data_wait *cdw, union ctl_io *io)
+//cxgbei_task_reserve_ttt(struct icl_conn *ic, void **prv, struct cfiscsi_data_wait *cdw, union ctl_io *io, unsigned int *ttt)
+cxgbei_task_reserve_ttt(struct icl_conn *ic, void **prv, union ctl_io *io, struct cfiscsi_data_wait *cdw, unsigned int *ttt)
 {
 	struct socket *so = ic->ic_socket;
         iscsi_socket *isock = (iscsi_socket *)(so)->so_emuldata;
@@ -641,10 +640,12 @@ cxgbei_task_reserve_ttt(struct icl_conn *ic, void **prv, struct cfiscsi_data_wai
 	int xferlen, err = -1;
 	cxgbei_sgl_t *sge = NULL;
 
+#if 0
 	if (!cdw) {
 		printf("%s: cdw is NULL\n", __func__);
 		return 0;
 	}
+#endif
 	xferlen = (io->scsiio.kern_data_len - io->scsiio.ext_data_filled);
 	//tdata = (cxgbei_task_data *)(cdw->ofld_priv);
 	tdata = (cxgbei_task_data *)*prv;
@@ -662,7 +663,8 @@ cxgbei_task_reserve_ttt(struct icl_conn *ic, void **prv, struct cfiscsi_data_wai
 	//printf("%s: nsge:%d sgl:%p\n", __func__, tdata->nsge, tdata->sgl);
 	sge = tdata->sgl;
 
-	tdata->sc_ddp_tag = cdw->cdw_target_transfer_tag;
+	//tdata->sc_ddp_tag = cdw->cdw_target_transfer_tag;
+	tdata->sc_ddp_tag = *ttt;
 	if (cxgbi_ulp2_sw_tag_usable(&odev->d_tag_format, tdata->sc_ddp_tag)) {
 		err = t4_sk_ddp_tag_reserve(isock, xferlen, sge, tdata->nsge, &tdata->sc_ddp_tag);
 	} else {
@@ -670,7 +672,8 @@ cxgbei_task_reserve_ttt(struct icl_conn *ic, void **prv, struct cfiscsi_data_wai
 	}
 out:
 	if (err < 0)
-		tdata->sc_ddp_tag = cxgbi_ulp2_set_non_ddp_tag(&odev->d_tag_format, cdw->cdw_target_transfer_tag);
+		tdata->sc_ddp_tag = cxgbi_ulp2_set_non_ddp_tag(&odev->d_tag_format, *ttt);
+		//tdata->sc_ddp_tag = cxgbi_ulp2_set_non_ddp_tag(&odev->d_tag_format, cdw->cdw_target_transfer_tag);
 	//printf("%s: returning tag:0x%x\n", __func__, tdata->sc_ddp_tag);
 	return tdata->sc_ddp_tag;
 }
@@ -873,7 +876,8 @@ static void iscsi_conn_receive_pdu(struct iscsi_socket *isock)
 	int data_len;
 
 	//response = icl_pdu_new(isock->s_conn, M_NOWAIT);
-	response = icl_cxgbei_conn_new_pdu(isock->s_conn, M_NOWAIT);
+	//response = icl_cxgbei_conn_new_pdu(isock->s_conn, M_NOWAIT);
+	response = icl_conn_new_pdu(isock->s_conn, M_NOWAIT);
 	if (response == NULL) {
 		printf("%s: failed to alloc icl_pdu\n", __func__);
 		return;
@@ -1336,22 +1340,23 @@ static offload_device *add_cxgbei_dev(struct ifnet *dev, struct toedev *tdev)
 	return odev;
 }
 
-void iscsi_ofld_ddp_handler_callback(void *conn, void **prv, void *scmd, void *task, unsigned int *itt, int mode);
-void iscsi_ofld_ddp_handler_callback(void *conn, void **prv, void *scmd, void *task, unsigned int *itt, int mode)
+/* initiator */
+void iscsi_ofld_ddp_task_handler_callback(void *conn, void **prv, void *scmd, void *task, unsigned int *itt)
 {
-	if (mode) { /* target */
-		*itt = htonl(cxgbei_task_reserve_ttt(conn, prv, scmd, task));
-	} else { /* initiator */
-		*itt = htonl(cxgbei_task_reserve_itt(conn, prv, scmd, task, itt));
-	}
+	*itt = htonl(cxgbei_task_reserve_itt(conn, prv, scmd, task, itt));
 	return;
 }
 
-void iscsi_ofld_cleanup_handler_callback(void *conn, void *ofld_priv);
+/* target */
+void iscsi_ofld_ddp_transfer_handler_callback(void *conn, void **prv, void *scmd, void *task, unsigned int *ttt)
+{
+	*ttt = htonl(cxgbei_task_reserve_ttt(conn, prv, scmd, task, ttt));
+	return;
+}
+
 void iscsi_ofld_cleanup_handler_callback(void *conn, void *ofld_priv)
 {
 	struct icl_conn *ic = (struct icl_conn *)conn;
-	//struct iscsi_outstanding *task = (struct iscsi_outstanding *)io;
 	cxgbei_task_data *tdata = NULL;
 	struct socket *so = NULL;
         iscsi_socket *isock = NULL;
@@ -1364,8 +1369,6 @@ void iscsi_ofld_cleanup_handler_callback(void *conn, void *ofld_priv)
 	isock = (iscsi_socket *)(so)->so_emuldata;
 	if (!isock) return;
 	odev = isock->s_odev;
-
-	//if (!task) return;
 
 	tdata = (cxgbei_task_data *)(ofld_priv);
 	if (!tdata) return;	
@@ -1430,7 +1433,6 @@ static int cxgbei_pdu_finalize(struct icl_pdu *request)
 	return (0);
 }
 
-int iscsi_ofld_tx_handler_callback(void *conn, void *ioreq);
 int iscsi_ofld_tx_handler_callback(void *conn, void *ioreq)
 {
 	struct icl_conn *ic = (struct icl_conn *)conn;
@@ -1465,7 +1467,6 @@ iscsi_ofld_parse_itt_handler_callback(struct socket *so, uint32_t itt)
 #endif
 
 /* called from TOM, socket is passed as argument  */
-int iscsi_ofld_conn_handler_callback(struct socket *so, void *conn);
 int iscsi_ofld_conn_handler_callback(struct socket *so, void *conn)
 {
 	struct tcpcb *tp = so_sototcpcb(so);
@@ -1523,8 +1524,6 @@ int iscsi_ofld_conn_handler_callback(struct socket *so, void *conn)
 	/* Register CPL_RX_ISCSI_HDR, CPL_RX_DATA_DDP callbacks with TOM */
 	t4_register_cpl_handler_with_tom(sc);
 
-	//sc->iscsi_softc = NULL;
-//#ifdef CXGBEI_DDP
 	/* DDP initialization. Once for each tdev */
 	/* TODO. check if DDP is already configured for this tdev */
 	odev = offload_device_find(tdev);
@@ -1536,7 +1535,6 @@ int iscsi_ofld_conn_handler_callback(struct socket *so, void *conn)
 			return -1;
 		}
 	}
-//#endif /* CXGBEI_DDP */
 
 	printf("%s: tdev:%p sc->iscsi_softc:%p odev:%p\n", __func__, tdev, sc->iscsi_softc, odev);
 	isock->s_odev = odev;
@@ -1550,7 +1548,6 @@ int iscsi_ofld_conn_handler_callback(struct socket *so, void *conn)
 	return 0;
 }
 
-int iscsi_ofld_conn_cleanup_handler_callback(struct socket *so);
 int iscsi_ofld_conn_cleanup_handler_callback(struct socket *so)
 {
 	iscsi_socket *isock = NULL;
@@ -1563,25 +1560,12 @@ int iscsi_ofld_conn_cleanup_handler_callback(struct socket *so)
 
 static int cxgbei_init(void)
 {
-	//t4tom_register_iscsi_ofld_callback(iscsi_ofld_conn_handler_callback);
-	//t4tom_register_iscsi_ofld_conn_cleanup_callback(iscsi_ofld_conn_cleanup_handler_callback);
-	//t4tom_register_iscsi_ofld_ddp_callback(iscsi_ofld_ddp_handler_callback);
-	//t4tom_register_iscsi_ofld_cleanup_callback(iscsi_ofld_cleanup_handler_callback);
-	//t4tom_register_iscsi_ofld_tx_callback(iscsi_ofld_tx_handler_callback);
-	//t4tom_register_iscsi_ofld_parse_itt_callback(iscsi_ofld_parse_itt_handler_callback);
-
 	return cxgbi_ulp2_init();
 }
 
 static void cxgbei_cleanup(void)
 {
 	cxgbi_ulp2_exit();
-	//t4tom_register_iscsi_ofld_callback(NULL);
-	//t4tom_register_iscsi_ofld_conn_cleanup_callback(NULL);
-	//t4tom_register_iscsi_ofld_ddp_callback(NULL);
-	//t4tom_register_iscsi_ofld_cleanup_callback(NULL);
-	//t4tom_register_iscsi_ofld_tx_callback(NULL);
-	//t4tom_register_iscsi_ofld_parse_itt_callback(NULL);
 	offload_device_remove();
 	printf("cxgbei_cleanup module: unloaded Sucessfully.\n");
 }
@@ -1593,14 +1577,6 @@ cxgbei_loader(struct module *mod, int cmd, void *arg)
 
 	switch (cmd) {
 	case MOD_LOAD:
-#if 0
-		err = icl_cxgbei_load();
-		if (err != 0) {
-			printf("cxgbei_init failed for chiscsi_t4.\n");
-			err = (ENOMEM);
-			break;
-		}
-#endif
 		err = cxgbei_init();
 		if (err != 0) {
 			printf("cxgbei_init failed for chiscsi_t4.\n");
@@ -1610,7 +1586,6 @@ cxgbei_loader(struct module *mod, int cmd, void *arg)
 		printf("cxgbei module loaded Sucessfully.\n");
 		break;
 	case MOD_UNLOAD:
-		//err = icl_cxgbei_unload();
 		cxgbei_cleanup();
 		printf("cxgbei cleanup completed sucessfully.\n");
 		break;
