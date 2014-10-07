@@ -10,6 +10,7 @@ SUBDIR+=	t4_firmware
 SUBDIR+=	t5_firmware
 SUBDIR+=	${_tom}
 SUBDIR+=	${_iw_cxgbe}
+SUBDIR+=        cxgbei
 
 .if ${MACHINE_CPUARCH} == "amd64"
 _tom=	tom

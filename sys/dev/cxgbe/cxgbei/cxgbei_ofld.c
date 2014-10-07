@@ -60,6 +60,19 @@
 #include <cam/scsi/scsi_all.h>
 #include <cam/scsi/scsi_message.h>
 
+/* debug prints */
+#define cxgbei_log_error(fmt...) printf("cxgbei: ERR! " fmt)
+#define cxgbei_log_warn(fmt...)  printf("cxgbei: WARN! " fmt)
+#define cxgbei_log_info(fmt...)  printf("cxgbei: " fmt)
+
+//#define __DEBUG_CXGBI__
+#ifdef __DEBUG_CXGBI__
+#define cxgbei_log_debug(fmt, args...) \
+	printf("cxgbei: %s - " fmt, __func__ , ## args)
+#else
+#define cxgbei_log_debug(fmt...)
+#endif
+
 /* forward declarations */
 void icl_pdu_set_data_segment_length(struct icl_pdu *response, uint32_t len);
 size_t icl_pdu_padding(const struct icl_pdu *ip);
@@ -72,7 +85,7 @@ struct ulp_mbuf_cb * get_ulp_mbuf_cb(struct mbuf *m)
 	mtag = m_tag_get(CXGBE_ISCSI_MBUF_TAG, sizeof(struct ulp_mbuf_cb),
 				M_NOWAIT);
 	if (mtag == NULL) {
-		printf("%s: mtag alloc failed\n", __func__);
+		cxgbei_log_error("%s: mtag alloc failed\n", __func__);
 		return NULL;
 	}
 	bzero(mtag + 1, sizeof(struct ulp_mbuf_cb));
@@ -254,7 +267,7 @@ static int ppod_write_idata(struct cxgbi_ulp2_ddp_info *ddp,
 
 	wr = alloc_wrqe(wr_len, toep->ctrlq);
 	if (wr == NULL) {
-		printf("%s: alloc wrqe failed\n", __func__);
+		cxgbei_log_error("%s: alloc wrqe failed\n", __func__);
 		return 0;
 	}
 
@@ -287,7 +300,7 @@ static int t4_ddp_set_map(struct cxgbi_ulp2_ddp_info *ddp,
 	int err = -1;
 
 	if (!isock) {
-		printf("%s: isock NULL.\n", __func__);
+		cxgbei_log_error("%s: isock NULL.\n", __func__);
 		return err;
 	}
 	sk = isock->sock;
@@ -315,7 +328,7 @@ static int t4_ddp_set_map(struct cxgbi_ulp2_ddp_info *ddp,
 			err = ppod_write_idata(ddp, hdr, idx, cnt, gl,
 						pidx, toep);
 			if (err < 0) {
-				printf("%s ppod_write_idata failed\n", __func__);
+				cxgbei_log_error("%s ppod_write_idata failed\n", __func__);
 				break;
 			}
 		}
@@ -550,7 +563,7 @@ static int t4_sk_ddp_tag_reserve(iscsi_socket *isock, unsigned int xferlen,
                                                 ddp_tag, gl,
                                                 0, 0);
                 if (err < 0) {
-			printf("%s: ddp_tag_reserve failed\n", __func__);
+			cxgbei_log_error("%s: ddp_tag_reserve failed\n", __func__);
                         cxgbi_ulp2_ddp_release_gl(gl, odev->d_tdev);
 		}
         }
@@ -582,7 +595,7 @@ cxgbei_task_reserve_itt(struct icl_conn *ic, void **prv,
 	if ((scmd->ccb_h.flags & CAM_DIR_MASK) == CAM_DIR_IN) {
 		tdata->nsge = cxgbei_map_sg(tdata->sgl, scmd);
 		if (tdata->nsge == 0) {
-			printf("%s: map_sg failed\n", __func__);
+			cxgbei_log_error("%s: map_sg failed\n", __func__);
 			return 0;
 		}
 		sge = tdata->sgl;
@@ -594,8 +607,8 @@ cxgbei_task_reserve_itt(struct icl_conn *ic, void **prv,
 			err = t4_sk_ddp_tag_reserve(isock, scmd->dxfer_len, sge,
 					 tdata->nsge, &tdata->sc_ddp_tag);
 		} else {
-			printf("%s: sc_ddp_tag:0x%x not usable\n",
-				__func__, tdata->sc_ddp_tag);
+			cxgbei_log_debug("sc_ddp_tag:0x%x not usable\n",
+					tdata->sc_ddp_tag);
 		}
 	}
 out:
@@ -625,7 +638,7 @@ cxgbei_task_reserve_ttt(struct icl_conn *ic, void **prv, union ctl_io *io,
 		goto out;
 	tdata->nsge = cxgbei_map_sg_tgt(tdata->sgl, io);
 	if (tdata->nsge == 0) {
-		printf("%s: map_sg failed\n", __func__);
+		cxgbei_log_error("map_sg failed\n");
 		return 0;
 	}
 	sge = tdata->sgl;
@@ -635,8 +648,8 @@ cxgbei_task_reserve_ttt(struct icl_conn *ic, void **prv, union ctl_io *io,
 		err = t4_sk_ddp_tag_reserve(isock, xferlen, sge, tdata->nsge,
 						&tdata->sc_ddp_tag);
 	} else {
-		printf("%s: sc_ddp_tag:0x%x not usable\n",
-				__func__, tdata->sc_ddp_tag);
+		cxgbei_log_debug("sc_ddp_tag:0x%x not usable\n",
+					tdata->sc_ddp_tag);
 	}
 out:
 	if (err < 0)
@@ -667,10 +680,10 @@ static struct cxgbi_ulp2_ddp_info* t4_ddp_init(struct ifnet *dev,
 				G_MAXRXDATA(t4_read_reg(sc, A_TP_PARA_REG2));
 
 	if (!sc->vres.iscsi.size) {
-		printf("iSCSI capabilities not enabled.\n");
+		cxgbei_log_error("iSCSI capabilities not enabled.\n");
 		return NULL;
 	}
-	printf("T4, ddp 0x%x ~ 0x%x, size %u, iolen %u, tdev->ulp ddp:0x%p.\n",
+	cxgbei_log_info("T4, ddp 0x%x ~ 0x%x, size %u, iolen %u, tdev->ulp ddp:0x%p.\n",
 		uinfo.llimit, uinfo.ulimit, sc->vres.iscsi.size,
 		uinfo.max_rxsz, sc->iscsi_softc);
 
@@ -705,7 +718,7 @@ static struct socket * cpl_find_sock(struct adapter *sc, struct mbuf *m)
 	sk = inp->inp_socket;
         INP_WUNLOCK(inp);
         if (!sk)
-                printf("T4 CPL tid 0x%x, sk NULL.\n", hwtid);
+                cxgbei_log_error("T4 CPL tid 0x%x, sk NULL.\n", hwtid);
         return sk;
 }
 
@@ -720,8 +733,6 @@ static void process_rx_iscsi_hdr(struct socket *sk, struct mbuf *m)
         struct ulp_mbuf_cb *lcb;
         unsigned char *byte;
         iscsi_socket *isock = (iscsi_socket *)(sk)->so_emuldata;
-	//unsigned char *buf;
-	//int i = 0;
 	unsigned int hlen, dlen, plen;
 
         if (!isock)
@@ -730,34 +741,18 @@ static void process_rx_iscsi_hdr(struct socket *sk, struct mbuf *m)
         if(!toep)
                 goto err_out;
 	if ((m->m_flags & M_PKTHDR) == 0) {
-                printf("m:%p doesn't have a M_PKTHDR can't allocate m_tag\n", m);
+		cxgbei_log_error("m:%p doesn't have a M_PKTHDR can't allocate m_tag\n", m);
         }
 
 	/* allocate m_tag to hold ulp info */
         cb = get_ulp_mbuf_cb(m);
         if (cb == NULL) {
-                printf("Error allocation m_tag\n");
+                cxgbei_log_error("Error allocation m_tag\n");
                 return;
         }
         cb->seq = ntohl(cpl->seq);
-	//printf("%s: ENTRY m :%p cb:%p seq = 0x%x cb->ulp_mode:%d sizeof-cpl:0x%lx \n",
-	//		__func__, m, cb, cb->seq,  cb->ulp_mode, sizeof(*cpl));
-
         /* strip off CPL header */
         m_adj(m, sizeof(*cpl));
-
-#if 0
-        buf = mtod(m, unsigned char *);
-        //if (buf[32] != 0x0) {
-              printf("ISCSI Packet: m_len:%d", m->m_len);
-              for (i = 0; i< 48; i++) {
-                      if(!(i % 16))
-                              printf("\n");
-                      printf("0x%02x ", *buf++);
-              }
-        //}
-                              printf("\n");
-#endif
 
 	/* figure out if this is the pdu header or data */
         cb->ulp_mode = ULP_MODE_ISCSI;
@@ -771,7 +766,7 @@ static void process_rx_iscsi_hdr(struct socket *sk, struct mbuf *m)
                         SBUF_ULP_FLAG_COALESCE_OFF;
                 /* we only update tp->rcv_nxt once per pdu */
                 if (cb->seq != tp->rcv_nxt) {
-                        printf(
+                        cxgbei_log_warn(
                                 "tid 0x%x, CPL_ISCSI_HDR, BAD seq got 0x%x exp 0x%x.\n",
                                 toep->tid,
                                 cb->seq, tp->rcv_nxt);
@@ -783,8 +778,7 @@ static void process_rx_iscsi_hdr(struct socket *sk, struct mbuf *m)
 		dlen = ntohl(*(unsigned int *)(byte + 4)) & 0xFFFFFF;
 
 		plen = ntohs(cpl->pdu_len_ddp);
-                //lcb->ulp.iscsi.pdulen = ntohs(cpl->pdu_len_ddp);
-                lcb->ulp.iscsi.pdulen = (hlen + dlen + 3) & (~0x3); //ntohs(cpl->pdu_len_ddp);
+                lcb->ulp.iscsi.pdulen = (hlen + dlen + 3) & (~0x3);
                 /* workaround for cpl->pdu_len_ddp since it does not include
                    the data digest count */
 		if (dlen)	
@@ -796,7 +790,7 @@ static void process_rx_iscsi_hdr(struct socket *sk, struct mbuf *m)
 
                 tp->rcv_nxt += lcb->ulp.iscsi.pdulen;
                 if (tp->rcv_wnd <= lcb->ulp.iscsi.pdulen)
-                        printf("%s: Negative wnd rcv_wnd:0x%lx pdulen:0x%x\n",
+                        cxgbei_log_warn("%s: Negative wnd rcv_wnd:0x%lx pdulen:0x%x\n",
                                 __func__, tp->rcv_wnd, lcb->ulp.iscsi.pdulen);
                 tp->rcv_wnd -= lcb->ulp.iscsi.pdulen;
                 tp->t_rcvtime = ticks;
@@ -804,25 +798,19 @@ static void process_rx_iscsi_hdr(struct socket *sk, struct mbuf *m)
 		lmbuf = isock->mbuf_ulp_lhdr;
                 lcb = find_ulp_mbuf_cb(lmbuf);
 		if (lcb == NULL) {
-			printf("%s: lmbuf:%p lcb is NULL\n", __func__, lmbuf);
+			cxgbei_log_error("%s: lmbuf:%p lcb is NULL\n",
+						__func__, lmbuf);
 			goto err_out;
 		}
                 lcb->flags |= SBUF_ULP_FLAG_DATA_RCVD |
                                 SBUF_ULP_FLAG_COALESCE_OFF;
                 cb->flags = SBUF_ULP_FLAG_DATA_RCVD;
 
-		/* padding. TODO */
+		/* padding */
 		if ((m->m_len % 4) != 0) {
                 	m->m_len += 4 - (m->m_len % 4);
 		}
-                //printf("sk 0x%p, tid 0x%x skb 0x%p, pdu data, pdulen:%d header 0x%p.\n",
-                 //       sk, toep->tid, m, lcb->ulp.iscsi.pdulen, lmbuf);
         }
-
-#if 0
-	printf("%s: m:%p len:%d cb:%p lmbuf:%p lcb:%p llen:%d pdulen:%d\n",
-		__func__, m, m->m_len, cb, lmbuf, lcb, lmbuf->m_len, lcb->ulp.iscsi.pdulen);
-#endif
 	mbufq_tail(&isock->iscsi_rcv_mbufq, m);
 	mtx_unlock(&isock->iscsi_rcv_mbufq.lock);
         return;
@@ -843,14 +831,14 @@ static void iscsi_conn_receive_pdu(struct iscsi_socket *isock)
 
 	response = icl_conn_new_pdu(isock->s_conn, M_NOWAIT);
 	if (response == NULL) {
-		printf("%s: failed to alloc icl_pdu\n", __func__);
+		cxgbei_log_error("%s: failed to alloc icl_pdu\n", __func__);
 		return;
 	}
 	m = mbufq_peek(&isock->iscsi_rcv_mbufq);
 	if (m) {
                 cb = find_ulp_mbuf_cb(m);
 		if (cb == NULL) {
-			printf("%s: m:%p cb is NULL\n", __func__, m);
+			cxgbei_log_error("%s: m:%p cb is NULL\n", __func__, m);
 			goto err_out;
 		}
 		if (!(cb->flags & SBUF_ULP_FLAG_STATUS_RCVD))
@@ -860,8 +848,8 @@ static void iscsi_conn_receive_pdu(struct iscsi_socket *isock)
 	mbufq_dequeue(&isock->iscsi_rcv_mbufq);
 	data_len = cb->ulp.iscsi.pdulen;
 
-	//printf("%s: response:%p m:%p m_len:%d data_len:%d\n",
-	//	__func__, response, m, m->m_len, data_len);
+	cxgbei_log_debug("response:%p m:%p m_len:%d data_len:%d\n",
+		response, m, m->m_len, data_len);
 	response->ip_bhs_mbuf = m;
 	response->ip_bhs = mtod(response->ip_bhs_mbuf, struct iscsi_bhs *);
 
@@ -869,7 +857,7 @@ static void iscsi_conn_receive_pdu(struct iscsi_socket *isock)
 	if (cb->flags & SBUF_ULP_FLAG_DATA_RCVD) {
 		m = mbufq_peek(&isock->iscsi_rcv_mbufq);
 		if (!m) {
-			printf("%s:No Data\n", __func__);
+			cxgbei_log_error("%s:No Data\n", __func__);
 			goto err_out;
 		}
 		mbufq_dequeue(&isock->iscsi_rcv_mbufq);
@@ -898,9 +886,8 @@ static void process_rx_data_ddp(struct socket *sk, struct mbuf *m)
         unsigned int val;
         iscsi_socket *isock = (iscsi_socket *)(sk)->so_emuldata;
 
-	//printf("%s: ENTRY m:%p mbuf_ulp_lhdr:%p\n", __func__, m, isock->mbuf_ulp_lhdr);
 	if (!isock->mbuf_ulp_lhdr) {
-                printf("tid 0x%x, rcv RX_DATA_DDP w/o pdu header.\n",
+                cxgbei_log_error("tid 0x%x, rcv RX_DATA_DDP w/o pdu header.\n",
                         toep->tid);
                 m_freem(m);
                 return;
@@ -913,20 +900,18 @@ static void process_rx_data_ddp(struct socket *sk, struct mbuf *m)
         }
         lcb = find_ulp_mbuf_cb(isock->mbuf_ulp_lhdr);
         if (!lcb) {
-                printf("mtag NULL lmbuf :%p\n", lmbuf);
+                cxgbei_log_error("mtag NULL lmbuf :%p\n", lmbuf);
 		mtx_unlock(&isock->iscsi_rcv_mbufq.lock);
                 return;
         }
         lcb->flags |= SBUF_ULP_FLAG_STATUS_RCVD;
-
-	//printf("%s: mbuf_ulp_lhdr:%p lcb:%p mnextpkt:%p lcb1:%p\n",
-	//	__func__, isock->mbuf_ulp_lhdr, lcb, lmbuf->m_nextpkt, lcb1);
         isock->mbuf_ulp_lhdr = NULL;
 
 	 if (ntohs(cpl->len) != lcb->ulp.iscsi.pdulen) {
-                printf("tid 0x%x, RX_DATA_DDP pdulen %u != %u.\n",
+                cxgbei_log_error("tid 0x%x, RX_DATA_DDP pdulen %u != %u.\n",
                         toep->tid, ntohs(cpl->len), lcb->ulp.iscsi.pdulen);
-                printf("%s: lmbuf:%p lcb:%p lcb->flags:0x%x\n", __func__, lmbuf, lcb, lcb->flags);
+                cxgbei_log_error("%s: lmbuf:%p lcb:%p lcb->flags:0x%x\n",
+					__func__, lmbuf, lcb, lcb->flags);
         }
 
         lcb->ulp.iscsi.ddigest = ntohl(cpl->ulp_crc);
@@ -977,8 +962,8 @@ static void process_rx_data_ddp(struct socket *sk, struct mbuf *m)
 	SOCK_LOCK(sk);
 	toep->sb_cc += lcb->ulp.iscsi.pdulen;
 	SOCK_UNLOCK(sk);
-	//printf("sk:%p sb_cc 0x%x, rcv_nxt 0x%x rcv_wnd:0x%lx.\n",
-	 //     sk, toep->sb_cc, tp->rcv_nxt, tp->rcv_wnd);
+	cxgbei_log_debug("sk:%p sb_cc 0x%x, rcv_nxt 0x%x rcv_wnd:0x%lx.\n",
+			sk, toep->sb_cc, tp->rcv_nxt, tp->rcv_wnd);
 	t4_rcvd(&toep->td->tod, tp);
 	INP_WUNLOCK(inp);
 	mtx_unlock(&isock->iscsi_rcv_mbufq.lock);
@@ -1001,11 +986,9 @@ drop_fw_acked_ulp_data(struct socket *sk, struct toepcb *toep, int len)
                 m = mbufq_dequeue(&isock->ulp2_wrq);
                 if(!m) break;
 
-		//printf("%s: m:%p m_len:%d plen:%d\n", __func__, m, m->m_len, len);
                 for(next = m; next !=NULL; next = next->m_next)
                         len -= next->m_len;
 
-		//m_freem(m);
 		cb = find_ulp_mbuf_cb(m);
 
 		if (cb && isock && cb->pdu) {
@@ -1059,12 +1042,12 @@ static int do_rx_iscsi_ddp(struct sge_iq *iq, const struct rss_header *rss, stru
 	const struct cpl_rx_iscsi_ddp *cpl = (const void *)(rss + 1);
 
 	if (!iq) {
-		printf("%s: iq is NULL",__func__);
+		cxgbei_log_error("%s: iq is NULL",__func__);
 		return 0;
 	}
 	sc = iq->adapter;
 	if (!sc) {
-		printf("%s: sc is NULL",__func__);
+		cxgbei_log_error("%s: sc is NULL",__func__);
 		return 0;
 	}
 	m = m_get(M_NOWAIT, MT_DATA);
@@ -1149,7 +1132,7 @@ static void iscsi_cpl_handler_callback(struct tom_data *td, struct socket *sk,
                 process_fw4_ack(sk, m);
                 break;
         default:
-                printf("sk 0x%p, op 0x%x from TOM, NOT supported.\n",
+                cxgbei_log_error("sk 0x%p, op 0x%x from TOM, NOT supported.\n",
                                 sk, op);
                 break;
         }
@@ -1229,7 +1212,6 @@ int send_set_tcb_field(struct socket *sk, u16 word, u64 mask, u64 val,
         req->val = htobe64(val);
 
         t4_wrq_tx(toep->td->tod.tod_softc, wr);
-	//printf("%s: toep:%p set ULP_MODE=2\n", __func__, toep);
         return 0;
 }
 
@@ -1255,10 +1237,10 @@ static offload_device *add_cxgbei_dev(struct ifnet *dev, struct toedev *tdev)
 	offload_device *odev = NULL;
 	odev = offload_device_new(tdev);
 	if (odev == NULL) {
-		printf("%s: odev is NULL\n", __func__);
+		cxgbei_log_error("%s: odev is NULL\n", __func__);
 		return odev;
 	}
-	printf("%s:New T4 %s, tdev 0x%p, odev 0x%p.\n",
+	cxgbei_log_info("%s:New T4 %s, tdev 0x%p, odev 0x%p.\n",
 			__func__, dev->if_xname, tdev, odev);
 	odev->d_tdev = tdev;
 	odev->d_ulp_rx_datagap = sizeof(struct cpl_iscsi_hdr_no_rss);
@@ -1267,7 +1249,7 @@ static offload_device *add_cxgbei_dev(struct ifnet *dev, struct toedev *tdev)
 	odev->tdev2ddp = t4_tdev2ddp;
 	ddp = t4_ddp_init(dev, tdev);
 	if (ddp) {
-		printf("T4 %s, odev 0x%p, ddp 0x%p initialized.\n",
+		cxgbei_log_info("T4 %s, odev 0x%p, ddp 0x%p initialized.\n",
 			dev->if_xname, odev, ddp);
 
 		odev->d_flag |= ODEV_FLAG_ULP_DDP_ENABLED;
@@ -1352,7 +1334,7 @@ static int cxgbei_pdu_finalize(struct icl_pdu *request)
 			ok = m_append(request->ip_data_mbuf, padding,
 			    (void *)&zero);
 			if (ok != 1) {
-				printf("WARNING:failed to append padding\n");
+				cxgbei_log_warn("failed to append padding\n");
 				return (1);
 			}
 		}
@@ -1416,13 +1398,13 @@ int cxgbei_conn_set_ulp_mode(struct socket *so, void *conn)
 
 	if (!(sototcpcb(so)->t_flags & TF_TOE) ||
                 !(ifp->if_capenable & IFCAP_TOE)) {
-		printf("ERR: TOE not enabled on interface:%s\n", ifp->if_xname);
+		cxgbei_log_error("TOE not enabled on:%s\n", ifp->if_xname);
 		return -1;
 	}
 
 	/* if ULP_MODE is set by TOE driver, treat it as non-offloaded */
 	if (toep->ulp_mode) {
-		printf("T4 sk 0x%p, ulp mode already set 0x%x.\n",
+		cxgbei_log_info("T4 sk 0x%p, ulp mode already set 0x%x.\n",
 				so, toep->ulp_mode);
 		return -1;
 	}
@@ -1430,13 +1412,14 @@ int cxgbei_conn_set_ulp_mode(struct socket *so, void *conn)
 	tdev = &toep->td->tod;
 	/* if toe dev is not set, treat it as non-offloaded */
 	if (!tdev) {
-		printf("T4 sk 0x%p, tdev NULL.\n", so);
+		cxgbei_log_error("T4 sk 0x%p, tdev NULL.\n", so);
 		return -1;
 	}
 
-	isock = (iscsi_socket *)malloc(sizeof(iscsi_socket), M_CXGBEIOFLD, M_NOWAIT | M_ZERO);
+	isock = (iscsi_socket *)malloc(sizeof(iscsi_socket), M_CXGBEIOFLD,
+				M_NOWAIT | M_ZERO);
 	if (!isock) {
-		printf("T4 sk 0x%p, isock alloc failed.\n", so);
+		cxgbei_log_error("T4 sk 0x%p, isock alloc failed.\n", so);
 		return -1;
 	}
 	isock->mbuf_ulp_lhdr = NULL;
@@ -1447,25 +1430,27 @@ int cxgbei_conn_set_ulp_mode(struct socket *so, void *conn)
 	mtx_init(&isock->ulp2_writeq.lock,"ulp2_writeq lock" , NULL, MTX_DEF);	
 	so->so_emuldata = isock;
 	so->so_options |=  0x8000; //SO_NO_DDP;
-	printf("%s: sc:%p toep:%p iscsi_start:0x%x iscsi_size:0x%x caps:%d :%s.\n",
-	__func__, sc, toep, sc->vres.iscsi.start, sc->vres.iscsi.size, sc->iscsicaps, sc->lockname);
+	cxgbei_log_info("%s: sc:%p toep:%p iscsi_start:0x%x iscsi_size:0x%x caps:%d.\n",
+			__func__, sc, toep, sc->vres.iscsi.start,
+			sc->vres.iscsi.size, sc->iscsicaps);
 	/* register ULP CPL handlers with TOM */
 	/* Register CPL_RX_ISCSI_HDR, CPL_RX_DATA_DDP callbacks with TOM */
 	t4_register_cpl_handler_with_tom(sc);
 
 	/* DDP initialization. Once for each tdev */
-	/* TODO. check if DDP is already configured for this tdev */
+	/* check if DDP is already configured for this tdev */
 	odev = offload_device_find(tdev);
 	if (odev == NULL) /* for each tdev we have a corresponding odev */
 	{
 		if ((odev = add_cxgbei_dev(ifp, tdev)) == NULL) {
-			printf("T4 sk 0x%p, tdev %s, 0x%p, odev NULL.\n",
+			cxgbei_log_error("T4 sk 0x%p, tdev %s, 0x%p, odev NULL.\n",
 						so, ifp->if_xname, tdev);
 			return -1;
 		}
 	}
 
-	printf("%s: tdev:%p sc->iscsi_softc:%p odev:%p\n", __func__, tdev, sc->iscsi_softc, odev);
+	cxgbei_log_debug("tdev:%p sc->iscsi_softc:%p odev:%p\n",
+			tdev, sc->iscsi_softc, odev);
 	isock->s_odev = odev;
 	isock->s_tid = tid;
 	/* Move connection to ULP mode, SET_TCB_FIELD */
@@ -1496,7 +1481,7 @@ static void cxgbei_cleanup(void)
 {
 	cxgbi_ulp2_exit();
 	offload_device_remove();
-	printf("cxgbei_cleanup module: unloaded Sucessfully.\n");
+	cxgbei_log_info("cxgbei_cleanup module: unloaded Sucessfully.\n");
 }
 
 static int
@@ -1508,15 +1493,15 @@ cxgbei_loader(struct module *mod, int cmd, void *arg)
 	case MOD_LOAD:
 		err = cxgbei_init();
 		if (err != 0) {
-			printf("cxgbei_init failed for chiscsi_t4.\n");
+			cxgbei_log_error("cxgbei_init failed.\n");
 			err = (ENOMEM);
 			break;
 		}
-		printf("cxgbei module loaded Sucessfully.\n");
+		cxgbei_log_info("cxgbei module loaded Sucessfully.\n");
 		break;
 	case MOD_UNLOAD:
 		cxgbei_cleanup();
-		printf("cxgbei cleanup completed sucessfully.\n");
+		cxgbei_log_info("cxgbei cleanup completed sucessfully.\n");
 		break;
 	default:
 		err = (EINVAL);
