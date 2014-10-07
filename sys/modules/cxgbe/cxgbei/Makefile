@@ -20,7 +20,6 @@ SRCS+=	icl_conn_if.h
 
 CFLAGS+= -I${CXGBE}
 CFLAGS +=-DTCP_OFFLOAD
-CFLAGS +=-DCHELSIO_OFFLOAD
 
 MFILES=	kern/bus_if.m kern/device_if.m dev/iscsi/icl_conn_if.m dev/pci/pci_if.m
 

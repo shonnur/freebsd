@@ -73,10 +73,6 @@
 #define cxgbei_log_debug(fmt...)
 #endif
 
-/* forward declarations */
-void icl_pdu_set_data_segment_length(struct icl_pdu *response, uint32_t len);
-size_t icl_pdu_padding(const struct icl_pdu *ip);
-
 /* mbuf_tag management functions */
 struct ulp_mbuf_cb * get_ulp_mbuf_cb(struct mbuf *m)
 {
@@ -573,9 +569,7 @@ static int t4_sk_ddp_tag_reserve(iscsi_socket *isock, unsigned int xferlen,
 
 static unsigned int
 cxgbei_task_reserve_itt(struct icl_conn *ic, void **prv,
-			struct ccb_scsiio *scmd,
-			struct iscsi_outstanding *task,
-			unsigned int *itt)
+			struct ccb_scsiio *scmd, unsigned int *itt)
 {
 	int xferlen = scmd->dxfer_len;
 	cxgbei_task_data *tdata = NULL;
@@ -621,7 +615,7 @@ out:
 
 static unsigned int
 cxgbei_task_reserve_ttt(struct icl_conn *ic, void **prv, union ctl_io *io,
-				struct cfiscsi_data_wait *cdw, unsigned int *ttt)
+				unsigned int *ttt)
 {
 	struct socket *so = ic->ic_socket;
         iscsi_socket *isock = (iscsi_socket *)(so)->so_emuldata;
@@ -1261,16 +1255,16 @@ static offload_device *add_cxgbei_dev(struct ifnet *dev, struct toedev *tdev)
 }
 
 /* initiator */
-void cxgbei_conn_task_reserve_itt(void *conn, void **prv, void *scmd, void *task, unsigned int *itt)
+void cxgbei_conn_task_reserve_itt(void *conn, void **prv, void *scmd, unsigned int *itt)
 {
-	*itt = htonl(cxgbei_task_reserve_itt(conn, prv, scmd, task, itt));
+	*itt = htonl(cxgbei_task_reserve_itt(conn, prv, scmd, itt));
 	return;
 }
 
 /* target */
-void cxgbei_conn_transfer_reserve_ttt(void *conn, void **prv, void *scmd, void *task, unsigned int *ttt)
+void cxgbei_conn_transfer_reserve_ttt(void *conn, void **prv, void *scmd, unsigned int *ttt)
 {
-	*ttt = htonl(cxgbei_task_reserve_ttt(conn, prv, scmd, task, ttt));
+	*ttt = htonl(cxgbei_task_reserve_ttt(conn, prv, scmd, ttt));
 	return;
 }
 
@@ -1317,36 +1311,6 @@ static void t4_sk_tx_mbuf_setmode(struct icl_pdu *req, void *toep, void *mbuf,
 	return;
 }
 
-static int cxgbei_pdu_finalize(struct icl_pdu *request)
-{
-	size_t padding = 0, pdu_len;
-	uint32_t zero = 0;
-	int ok;
-
-	icl_pdu_set_data_segment_length(request, request->ip_data_len);
-
-	pdu_len = sizeof(struct iscsi_bhs) + request->ip_data_len +
-				icl_pdu_padding(request);
-
-	if (request->ip_data_len != 0) {
-		padding = icl_pdu_padding(request);
-		if (padding > 0) {
-			ok = m_append(request->ip_data_mbuf, padding,
-			    (void *)&zero);
-			if (ok != 1) {
-				cxgbei_log_warn("failed to append padding\n");
-				return (1);
-			}
-		}
-
-		m_cat(request->ip_bhs_mbuf, request->ip_data_mbuf);
-		request->ip_data_mbuf = NULL;
-	}
-	request->ip_bhs_mbuf->m_pkthdr.len = pdu_len;
-
-	return (0);
-}
-
 int cxgbei_conn_xmit_pdu(void *conn, void *ioreq)
 {
 	struct icl_conn *ic = (struct icl_conn *)conn;
@@ -1355,7 +1319,6 @@ int cxgbei_conn_xmit_pdu(void *conn, void *ioreq)
 	struct socket *so = ic->ic_socket;
 	struct tcpcb *tp = so_sototcpcb(so);
 
-	cxgbei_pdu_finalize(req);
 	t4_sk_tx_mbuf_setmode(req, tp->t_toe, m, 2,
 		ic->ic_header_crc32c ? ISCSI_HEADER_DIGEST_SIZE : 0,
 		(req->ip_data_len && ic->ic_data_crc32c) ? ISCSI_DATA_DIGEST_SIZE : 0);

@@ -167,9 +167,9 @@ enum {
 int cxgbei_conn_set_ulp_mode(struct socket *so, void *conn);
 int cxgbei_conn_close(struct socket *so);
 void cxgbei_conn_task_reserve_itt(void *conn, void **prv, void *scmd,
-			void *task, unsigned int *itt);
+			unsigned int *itt);
 void cxgbei_conn_transfer_reserve_ttt(void *conn, void **prv,
-			void *scmd, void *task, unsigned int *ttt);
+			void *scmd, unsigned int *ttt);
 void cxgbei_cleanup_task(void *conn, void *ofld_priv);
 int cxgbei_conn_xmit_pdu(void *conn, void *ioreq);
 #endif

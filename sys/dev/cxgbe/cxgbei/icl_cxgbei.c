@@ -80,9 +80,7 @@ SYSCTL_INT(_kern_icl_cxgbei, OID_AUTO, recvspace, CTLFLAG_RWTUN,
 
 static MALLOC_DEFINE(M_ICL_CXGBEI, "icl_cxgbei", "iSCSI software backend");
 static uma_zone_t icl_pdu_zone;
-#ifdef CHELSIO_OFFLOAD
 static uma_zone_t icl_transfer_zone;
-#endif
 
 static volatile u_int	icl_ncons;
 
@@ -131,10 +129,6 @@ static kobj_method_t icl_cxgbei_methods[] = {
 };
 
 DEFINE_CLASS(icl_cxgbei, icl_cxgbei_methods, sizeof(struct icl_conn));
-
-/* TODO: can we declare these functions in icl.h file ? */
-void icl_pdu_set_data_segment_length(struct icl_pdu *response, uint32_t len);
-size_t icl_pdu_padding(const struct icl_pdu *ip);
 
 /*
  * XXX
@@ -288,7 +282,7 @@ icl_cxgbei_conn_pdu_data_segment_length(struct icl_conn *ic, const struct icl_pd
 	return (icl_pdu_data_segment_length(request));
 }
 
-void
+static void
 icl_pdu_set_data_segment_length(struct icl_pdu *response, uint32_t len)
 {
 
@@ -297,7 +291,7 @@ icl_pdu_set_data_segment_length(struct icl_pdu *response, uint32_t len)
 	response->ip_bhs->bhs_data_segment_len[0] = len >> 16;
 }
 
-size_t
+static size_t
 icl_pdu_padding(const struct icl_pdu *ip)
 {
 
@@ -307,27 +301,18 @@ icl_pdu_padding(const struct icl_pdu *ip)
 	return (0);
 }
 
-#if 0
 static size_t
 icl_pdu_size(const struct icl_pdu *response)
 {
 	size_t len;
 
-printf("%s:%d ENTRY\n", __func__, __LINE__);
 	KASSERT(response->ip_ahs_len == 0, ("responding with AHS"));
 
 	len = sizeof(struct iscsi_bhs) + response->ip_data_len +
 	    icl_pdu_padding(response);
-	if (response->ip_conn->ic_header_crc32c)
-		len += ISCSI_HEADER_DIGEST_SIZE;
-	if (response->ip_data_len != 0 && response->ip_conn->ic_data_crc32c)
-		len += ISCSI_DATA_DIGEST_SIZE;
 
 	return (len);
 }
-#endif
-
-#ifdef CHELSIO_OFFLOAD
 
 static uint32_t
 icl_conn_build_tasktag(struct icl_conn *ic, uint32_t tag)
@@ -338,7 +323,6 @@ icl_conn_build_tasktag(struct icl_conn *ic, uint32_t tag)
 
 	return (tag);
 }
-#endif /* CHELSIO_OFFLOAD */
 
 #if 0
 static int
@@ -879,31 +863,16 @@ icl_soupcall_receive(struct socket *so, void *arg, int waitflag)
 	return (SU_OK);
 }
 
-#if 0
 static int
 icl_pdu_finalize(struct icl_pdu *request)
 {
 	size_t padding, pdu_len;
-	uint32_t digest, zero = 0;
+	uint32_t zero = 0;
 	int ok;
-	struct icl_conn *ic;
-
-printf("%s:%d ENTRY\n", __func__, __LINE__);
-	ic = request->ip_conn;
 
 	icl_pdu_set_data_segment_length(request, request->ip_data_len);
 
 	pdu_len = icl_pdu_size(request);
-
-	if (ic->ic_header_crc32c) {
-		digest = icl_mbuf_to_crc32c(request->ip_bhs_mbuf);
-		ok = m_append(request->ip_bhs_mbuf, sizeof(digest),
-		    (void *)&digest);
-		if (ok != 1) {
-			ICL_WARN("failed to append header digest");
-			return (1);
-		}
-	}
 
 	if (request->ip_data_len != 0) {
 		padding = icl_pdu_padding(request);
@@ -916,16 +885,6 @@ printf("%s:%d ENTRY\n", __func__, __LINE__);
 			}
 		}
 
-		if (ic->ic_data_crc32c) {
-			digest = icl_mbuf_to_crc32c(request->ip_data_mbuf);
-
-			ok = m_append(request->ip_data_mbuf, sizeof(digest),
-			    (void *)&digest);
-			if (ok != 1) {
-				ICL_WARN("failed to append data digest");
-				return (1);
-			}
-		}
 
 		m_cat(request->ip_bhs_mbuf, request->ip_data_mbuf);
 		request->ip_data_mbuf = NULL;
@@ -935,7 +894,6 @@ printf("%s:%d ENTRY\n", __func__, __LINE__);
 
 	return (0);
 }
-#endif
 
 #if 0
 static void
@@ -1190,10 +1148,8 @@ static void
 icl_pdu_get_data(struct icl_pdu *ip, size_t off, void *addr, size_t len)
 {
 
-#ifdef CHELSIO_OFFLOAD
 	/* data is DDP'ed, no need to copy */
 	if (ip->ip_ofld_prv0) return;
-#endif /* CHELSIO_OFFLOAD */
 	m_copydata(ip->ip_data_mbuf, off, len, addr);
 }
 
@@ -1219,6 +1175,7 @@ icl_pdu_queue(struct icl_pdu *ip)
 		return;
 	}
 
+	icl_pdu_finalize(ip);
 	cxgbei_conn_xmit_pdu(ic, ip);
 }
 
@@ -1538,7 +1495,6 @@ int
 icl_cxgbei_conn_task_setup(struct icl_conn *ic, void **prvp, struct ccb_scsiio *csio,
     void *iop2, uint32_t *tag)
 {
-#ifdef CHELSIO_OFFLOAD
 	void *prv;
 
 	*tag = icl_conn_build_tasktag(ic, *tag);
@@ -1549,8 +1505,7 @@ icl_cxgbei_conn_task_setup(struct icl_conn *ic, void **prvp, struct ccb_scsiio *
 
 	*prvp = prv;
 
-	cxgbei_conn_task_reserve_itt(ic, prvp, csio, iop2, tag);
-#endif
+	cxgbei_conn_task_reserve_itt(ic, prvp, csio, tag);
 
 	return (0);
 }
@@ -1568,7 +1523,6 @@ int
 icl_cxgbei_conn_transfer_setup(struct icl_conn *ic, void **prvp, union ctl_io *io,
     void *iop2, uint32_t *tag)
 {
-#ifdef CHELSIO_OFFLOAD
 	void *prv;
 
 	*tag = icl_conn_build_tasktag(ic, *tag);
@@ -1579,8 +1533,7 @@ icl_cxgbei_conn_transfer_setup(struct icl_conn *ic, void **prvp, union ctl_io *i
 
 	*prvp = prv;
 
-	cxgbei_conn_transfer_reserve_ttt(ic, prvp, io, iop2, tag);
-#endif
+	cxgbei_conn_transfer_reserve_ttt(ic, prvp, io, tag);
 
 	return (0);
 }
@@ -1636,11 +1589,9 @@ int icl_cxgbei_load(void)
 	icl_pdu_zone = uma_zcreate("icl_pdu",
 	    sizeof(struct icl_pdu), NULL, NULL, NULL, NULL,
 	    UMA_ALIGN_PTR, 0);
-#ifdef CHELSIO_OFFLOAD
 	icl_transfer_zone = uma_zcreate("icl_transfer",
 	    16 * 1024, NULL, NULL, NULL, NULL,
 	    UMA_ALIGN_PTR, 0);
-#endif
 	refcount_init(&icl_ncons, 0);
 
 	error = icl_register("cxgbei", 100, icl_cxgbei_limits, icl_cxgbei_new_conn);
@@ -1660,9 +1611,7 @@ int icl_cxgbei_unload(void)
 	icl_unregister("cxgbei");
 
 	uma_zdestroy(icl_pdu_zone);
-#ifdef CHELSIO_OFFLOAD
 	uma_zdestroy(icl_transfer_zone);
-#endif
 
 	return (0);
 }
