@@ -57,7 +57,7 @@ int cxgbei_ulp2_init(void)
 
         for (i = 0; i < RSVD_PAGE_MAX; i++) {
         	chrsvd_pages[i] = (struct page *)malloc(PAGE_SIZE,
-					M_CXGBEIOFLD, M_NOWAIT|M_ZERO);
+					M_CXGBEI, M_NOWAIT|M_ZERO);
                 if (!chrsvd_pages[i]) {
                         printf("ddp rsvd page %d OOM.\n", i);
                         return -ISCSI_ENOMEM;
@@ -72,7 +72,7 @@ void cxgbei_ulp2_exit(void)
         int i;
         for (i = 0; i < RSVD_PAGE_MAX; i++)
                 if (chrsvd_pages[i]) {
-			free(chrsvd_pages[i], M_CXGBEIOFLD);
+			free(chrsvd_pages[i], M_CXGBEI);
                         chrsvd_pages[i] = NULL;
                 }
 }

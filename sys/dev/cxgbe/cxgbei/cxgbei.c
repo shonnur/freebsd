@@ -45,7 +45,6 @@
 #include <dev/iscsi/iscsi_proto.h>
 #include <dev/iscsi/iscsi_ioctl.h>
 #include <dev/iscsi/iscsi.h>
-#include <dev/iscsi/icl_wrappers.h>
 #include <cam/ctl/ctl_frontend_iscsi.h>
 
 #include <cam/cam.h>
@@ -59,6 +58,10 @@
 #include <cam/cam_compat.h>
 #include <cam/scsi/scsi_all.h>
 #include <cam/scsi/scsi_message.h>
+
+/* forward declarations */
+struct icl_pdu * icl_conn_new_empty_pdu(struct icl_conn *ic, int flags);
+void icl_pdu_free(struct icl_pdu *ip);
 
 /* debug prints */
 #define cxgbei_log_error(fmt...) printf("cxgbei: ERR! " fmt)
@@ -401,7 +404,7 @@ static offload_device *offload_device_new(void *tdev)
 {
 	offload_device *odev = NULL;
 	odev = malloc(sizeof(struct offload_device),
-			M_CXGBEIOFLD, M_NOWAIT | M_ZERO);
+			M_CXGBEI, M_NOWAIT | M_ZERO);
 	if (odev) {
 		odev->d_tdev = tdev;
 		LIST_INSERT_HEAD(&odev_list, odev, link);
@@ -447,7 +450,7 @@ static void offload_device_remove()
 	LIST_FOREACH(odev, &odev_list, link) {
 		LIST_REMOVE(odev, link);
 		cxgbei_odev_cleanup(odev);
-		free(odev, M_CXGBEIOFLD);
+		free(odev, M_CXGBEI);
 	}
 	return;
 }
@@ -823,7 +826,7 @@ static void iscsi_conn_receive_pdu(struct iscsi_socket *isock)
         struct ulp_mbuf_cb *cb = NULL;
 	int data_len;
 
-	response = icl_conn_new_pdu(isock->s_conn, M_NOWAIT);
+	response = icl_conn_new_empty_pdu(isock->s_conn, M_NOWAIT);
 	if (response == NULL) {
 		cxgbei_log_error("%s: failed to alloc icl_pdu\n", __func__);
 		return;
@@ -842,8 +845,8 @@ static void iscsi_conn_receive_pdu(struct iscsi_socket *isock)
 	mbufq_dequeue(&isock->iscsi_rcv_mbufq);
 	data_len = cb->ulp.iscsi.pdulen;
 
-	cxgbei_log_debug("response:%p m:%p m_len:%d data_len:%d\n",
-		response, m, m->m_len, data_len);
+	//printf("%s: response:%p m:%p m_len:%d data_len:%d\n",
+	//	__func__, response, m, m->m_len, data_len);
 	response->ip_bhs_mbuf = m;
 	response->ip_bhs = mtod(response->ip_bhs_mbuf, struct iscsi_bhs *);
 
@@ -857,15 +860,17 @@ static void iscsi_conn_receive_pdu(struct iscsi_socket *isock)
 		mbufq_dequeue(&isock->iscsi_rcv_mbufq);
 		response->ip_data_mbuf = m;
 		response->ip_data_len += response->ip_data_mbuf->m_len;
+		//printf("%s: response:%p data received\n", __func__, response);
 	} else {
 		/* Data is DDP'ed */
 		response->ip_ofld_prv0 = 1;
+		//printf("%s: response:%p data DDPed\n", __func__, response);
 	}
 	(ic->ic_receive)(response);
 	return;
 
 err_out:
-	free(response, M_CXGBEIOFLD);
+	free(response, M_CXGBEI);
 	return;
 }
 
@@ -1340,7 +1345,7 @@ cxgbei_parse_pdu_tag(struct socket *so, uint32_t itt)
 }
 #endif
 
-/* called from TOM, socket is passed as argument  */
+/* called from host iscsi, socket is passed as argument  */
 int cxgbei_conn_set_ulp_mode(struct socket *so, void *conn)
 {
 	struct tcpcb *tp = so_sototcpcb(so);
@@ -1379,7 +1384,7 @@ int cxgbei_conn_set_ulp_mode(struct socket *so, void *conn)
 		return -1;
 	}
 
-	isock = (iscsi_socket *)malloc(sizeof(iscsi_socket), M_CXGBEIOFLD,
+	isock = (iscsi_socket *)malloc(sizeof(iscsi_socket), M_CXGBEI,
 				M_NOWAIT | M_ZERO);
 	if (!isock) {
 		cxgbei_log_error("T4 sk 0x%p, isock alloc failed.\n", so);
@@ -1392,16 +1397,19 @@ int cxgbei_conn_set_ulp_mode(struct socket *so, void *conn)
 	mtx_init(&isock->ulp2_wrq.lock,"ulp2_wrq lock" , NULL, MTX_DEF);	
 	mtx_init(&isock->ulp2_writeq.lock,"ulp2_writeq lock" , NULL, MTX_DEF);	
 	so->so_emuldata = isock;
-	so->so_options |=  0x8000; //SO_NO_DDP;
 	cxgbei_log_info("%s: sc:%p toep:%p iscsi_start:0x%x iscsi_size:0x%x caps:%d.\n",
 			__func__, sc, toep, sc->vres.iscsi.start,
 			sc->vres.iscsi.size, sc->iscsicaps);
-	/* register ULP CPL handlers with TOM */
-	/* Register CPL_RX_ISCSI_HDR, CPL_RX_DATA_DDP callbacks with TOM */
+	/* 
+	 * Register ULP CPL handlers with TOM 
+	 * Register CPL_RX_ISCSI_HDR, CPL_RX_DATA_DDP callbacks with TOM
+	 */
 	t4_register_cpl_handler_with_tom(sc);
 
-	/* DDP initialization. Once for each tdev */
-	/* check if DDP is already configured for this tdev */
+	/*
+	 * DDP initialization. Once for each tdev
+	 * check if DDP is already configured for this tdev
+	 */
 	odev = offload_device_find(tdev);
 	if (odev == NULL) /* for each tdev we have a corresponding odev */
 	{
@@ -1416,6 +1424,10 @@ int cxgbei_conn_set_ulp_mode(struct socket *so, void *conn)
 			tdev, sc->iscsi_softc, odev);
 	isock->s_odev = odev;
 	isock->s_tid = tid;
+
+	/* set toe DDP off */
+	so->so_options |= SO_NO_DDP;
+
 	/* Move connection to ULP mode, SET_TCB_FIELD */
 	cxgbei_set_ulp_mode(so, toep,
 		ic->ic_header_crc32c, ic->ic_data_crc32c);
@@ -1431,7 +1443,7 @@ int cxgbei_conn_close(struct socket *so)
 	isock = (iscsi_socket *)(so)->so_emuldata;
 	if (!isock) return 0;
 
-	free(isock, M_CXGBEIOFLD);
+	free(isock, M_CXGBEI);
 	return 0;
 }
 

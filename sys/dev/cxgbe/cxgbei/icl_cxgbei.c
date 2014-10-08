@@ -91,7 +91,7 @@ static volatile u_int	icl_ncons;
 
 STAILQ_HEAD(icl_pdu_stailq, icl_pdu);
 
-icl_conn_new_pdu_t	icl_cxgbei_conn_new_pdu;
+static icl_conn_new_pdu_t	icl_cxgbei_conn_new_pdu;
 static icl_conn_pdu_free_t	icl_cxgbei_conn_pdu_free;
 static icl_conn_pdu_data_segment_length_t
 				    icl_cxgbei_conn_pdu_data_segment_length;
@@ -181,7 +181,9 @@ printf("%s:%d ENTRY\n", __func__, __LINE__);
 }
 #endif
 
-static struct icl_pdu *
+struct icl_pdu *
+icl_conn_new_empty_pdu(struct icl_conn *ic, int flags);
+struct icl_pdu *
 icl_conn_new_empty_pdu(struct icl_conn *ic, int flags)
 {
 	struct icl_pdu *ip;
@@ -203,13 +205,16 @@ icl_conn_new_empty_pdu(struct icl_conn *ic, int flags)
 	return (ip);
 }
 
-static void
+void icl_pdu_free(struct icl_pdu *ip);
+void
 icl_pdu_free(struct icl_pdu *ip)
 {
 	struct icl_conn *ic;
 
 	ic = ip->ip_conn;
 
+	//printf("%s: freeing pdu:%p ip_bhs_mbuf:%p ip_data_mbuf:%p\n",
+	//	__func__, ip, ip->ip_bhs_mbuf, ip->ip_data_mbuf);
 	m_freem(ip->ip_bhs_mbuf);
 	m_freem(ip->ip_ahs_mbuf);
 	m_freem(ip->ip_data_mbuf);
@@ -228,7 +233,7 @@ icl_cxgbei_conn_pdu_free(struct icl_conn *ic, struct icl_pdu *ip)
 /*
  * Allocate icl_pdu with empty BHS to fill up by the caller.
  */
-struct icl_pdu *
+static struct icl_pdu *
 icl_cxgbei_conn_new_pdu(struct icl_conn *ic, int flags)
 {
 	struct icl_pdu *ip;
@@ -1194,7 +1199,6 @@ icl_cxgbei_new_conn(const char *name, struct mtx *lock)
 	refcount_acquire(&icl_ncons);
 
 	ic = (struct icl_conn *)kobj_create(&icl_cxgbei_class, M_ICL_CXGBEI, M_WAITOK | M_ZERO);
-	printf("%s: ic:%p\n", __func__, ic);
 
 	STAILQ_INIT(&ic->ic_to_send);
 	ic->ic_lock = lock;
@@ -1332,7 +1336,6 @@ icl_cxgbei_conn_handoff(struct icl_conn *ic, int fd)
 	int error;
 
 	ICL_CONN_LOCK_ASSERT_NOT(ic);
-	printf("%s:%d entry\n", __func__, __LINE__);
 
 	/*
 	 * Steal the socket from userland.
@@ -1551,7 +1554,6 @@ icl_cxgbei_limits(size_t *limitp)
 {
 
 	*limitp = 8 * 1024;
-	printf("%s: limits:%zu\n", __func__, *limitp);
 
 	return (0);
 }

@@ -102,7 +102,7 @@ typedef struct cxgbei_sgl {
 #define sg_off(_sgel)           _sgel->sg_offset
 #define sg_next(_sgel)          _sgel + 1
 
-static MALLOC_DEFINE(M_CXGBEIOFLD, "cxgbei", "Chelsio iSCSI offload driver");
+static MALLOC_DEFINE(M_CXGBEI, "cxgbei", "Chelsio iSCSI offload driver");
 
 #define SBUF_ULP_FLAG_HDR_RCVD          0x1
 #define SBUF_ULP_FLAG_DATA_RCVD         0x2
