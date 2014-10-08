@@ -61,7 +61,7 @@
 #include <dev/iscsi/iscsi_proto.h>
 #include <dev/iscsi/iscsi_ioctl.h>
 #include <dev/iscsi/iscsi.h>
-#include "cxgbei_ofld.h"
+#include "cxgbei.h"
 
 SYSCTL_NODE(_kern_icl, OID_AUTO, cxgbei, CTLFLAG_RD, 0, "Chelsio iSCSI offload");
 static int coalesce = 1;

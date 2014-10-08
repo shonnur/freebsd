@@ -1,13 +1,6 @@
 /*
- * cxgbi_ulp2_ddp.c: Chelsio S4xx iSCSI DDP Manager.
+ * cxgbei_ulp2_ddp.c: Chelsio iSCSI DDP Manager.
  *
- * Copyright (c) 2010 Chelsio Communications, Inc.
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation.
- *
- * Written by: Karen Xie (kxie@chelsio.com)
  */
 #include <sys/types.h>
 #include <sys/module.h>
@@ -33,22 +26,22 @@
 #include <common/t4_regs.h>     /* for PCIE_MEM_ACCESS */
 #include <tom/t4_tom.h>
 
-#include "cxgbei_ofld.h"
-#include "cxgbi_ulp2_ddp.h"
+#include "cxgbei.h"
+#include "cxgbei_ulp2_ddp.h"
 
-#define ddp_log_error(fmt...) printf("cxgbi_ulp2_ddp: ERR! " fmt)
-#define ddp_log_warn(fmt...)  printf("cxgbi_ulp2_ddp: WARN! " fmt)
-#define ddp_log_info(fmt...)  printf("cxgbi_ulp2_ddp: " fmt)
+#define ddp_log_error(fmt...) printf("cxgbei_ulp2_ddp: ERR! " fmt)
+#define ddp_log_warn(fmt...)  printf("cxgbei_ulp2_ddp: WARN! " fmt)
+#define ddp_log_info(fmt...)  printf("cxgbei_ulp2_ddp: " fmt)
 
 //#define __DEBUG_CXGBI_DDP__
 #ifdef __DEBUG_CXGBI_DDP__
 #define ddp_log_debug(fmt, args...) \
-	printf("cxgbi_ulp2_ddp: %s - " fmt, __func__ , ## args)
+	printf("cxgbei_ulp2_ddp: %s - " fmt, __func__ , ## args)
 #else
 #define ddp_log_debug(fmt...)
 #endif
 
-static inline int cxgbi_counter_dec_and_read(volatile int *p)
+static inline int cxgbei_counter_dec_and_read(volatile int *p)
 {	
 	atomic_subtract_acq_int(p, 1);
 	return atomic_load_acq_int(p);
@@ -58,7 +51,7 @@ static inline int cxgbi_counter_dec_and_read(volatile int *p)
 struct page *chrsvd_pages[RSVD_PAGE_MAX] = {NULL, NULL};
 void *chrsvd_pages_addr[RSVD_PAGE_MAX] = {NULL, NULL};
 
-int cxgbi_ulp2_init(void)
+int cxgbei_ulp2_init(void)
 {
         int i;
 
@@ -74,7 +67,7 @@ int cxgbi_ulp2_init(void)
         return 0;
 }
 
-void cxgbi_ulp2_exit(void)
+void cxgbei_ulp2_exit(void)
 {
         int i;
         for (i = 0; i < RSVD_PAGE_MAX; i++)
@@ -113,7 +106,7 @@ ulp2_dma_map_addr(void *arg, bus_dma_segment_t *segs, int nseg, int error)
 }
 
 static int
-ulp2_dma_tag_create(struct cxgbi_ulp2_ddp_info *ddp)
+ulp2_dma_tag_create(struct cxgbei_ulp2_ddp_info *ddp)
 {
 	int rc;
 
@@ -149,10 +142,10 @@ unsigned char ddp_page_order[DDP_PGIDX_MAX] = {0, 1, 2, 4};
 unsigned char ddp_page_shift[DDP_PGIDX_MAX] = {12, 13, 14, 16};
 unsigned char page_idx = DDP_PGIDX_MAX;
 
-static inline int ddp_find_unused_entries(struct cxgbi_ulp2_ddp_info *ddp,
+static inline int ddp_find_unused_entries(struct cxgbei_ulp2_ddp_info *ddp,
 					  unsigned int start, unsigned int max,
 					  unsigned int count,
-					  struct cxgbi_ulp2_gather_list *gl)
+					  struct cxgbei_ulp2_gather_list *gl)
 {
 	unsigned int i, j, k;
 
@@ -179,21 +172,21 @@ static inline int ddp_find_unused_entries(struct cxgbi_ulp2_ddp_info *ddp,
 	return -EBUSY;
 }
 
-static inline void ddp_unmark_entries(struct cxgbi_ulp2_ddp_info *ddp,
+static inline void ddp_unmark_entries(struct cxgbei_ulp2_ddp_info *ddp,
 				      int start, int count)
 {
 	mtx_lock(&ddp->map_lock);
 	memset(&ddp->gl_map[start], 0,
-	       count * sizeof(struct cxgbi_ulp2_gather_list *));
+	       count * sizeof(struct cxgbei_ulp2_gather_list *));
 	mtx_unlock(&ddp->map_lock);
 }
 
 /**
- * cxgbi_ulp2_ddp_find_page_index - return ddp page index for a given page size
+ * cxgbei_ulp2_ddp_find_page_index - return ddp page index for a given page size
  * @pgsz: page size
  * return the ddp page index, if no match is found return DDP_PGIDX_MAX.
  */
-int cxgbi_ulp2_ddp_find_page_index(unsigned long pgsz)
+int cxgbei_ulp2_ddp_find_page_index(unsigned long pgsz)
 {
 	int i;
 
@@ -205,7 +198,7 @@ int cxgbi_ulp2_ddp_find_page_index(unsigned long pgsz)
 	return DDP_PGIDX_MAX;
 }
 
-static int cxgbi_ulp2_ddp_adjust_page_table(void)
+static int cxgbei_ulp2_ddp_adjust_page_table(void)
 {
 	int i;
 	unsigned int base_order, order;
@@ -228,11 +221,11 @@ static int cxgbi_ulp2_ddp_adjust_page_table(void)
 
 	
 static inline void ddp_gl_unmap(struct toedev *tdev,
-				struct cxgbi_ulp2_gather_list *gl)
+				struct cxgbei_ulp2_gather_list *gl)
 {
 	int i;
 	struct adapter *sc = tdev->tod_softc;
-	struct cxgbi_ulp2_ddp_info *ddp = sc->iscsi_softc;
+	struct cxgbei_ulp2_ddp_info *ddp = sc->iscsi_softc;
 
 	if (!gl->pages[0])
 		return;
@@ -244,14 +237,14 @@ static inline void ddp_gl_unmap(struct toedev *tdev,
 }
 
 static inline int ddp_gl_map(struct toedev *tdev,
-			     struct cxgbi_ulp2_gather_list *gl)
+			     struct cxgbei_ulp2_gather_list *gl)
 {
 	int i, rc;
 	bus_addr_t pa;
-	struct cxgbi_ulp2_ddp_info *ddp;
+	struct cxgbei_ulp2_ddp_info *ddp;
 	struct adapter *sc = tdev->tod_softc;
 
-	ddp = (struct cxgbi_ulp2_ddp_info *)sc->iscsi_softc;
+	ddp = (struct cxgbei_ulp2_ddp_info *)sc->iscsi_softc;
 	if (!ddp) {
 		printf("%s: ERROR tdev:%p sc:%p ddp:%p\n", __func__, tdev, sc, ddp);
 		return -ENOMEM;
@@ -288,7 +281,7 @@ unmap:
 }
 
 /**
- * cxgbi_ulp2_ddp_make_gl_from_iscsi_sgvec - build ddp page buffer list
+ * cxgbei_ulp2_ddp_make_gl_from_iscsi_sgvec - build ddp page buffer list
  * @xferlen: total buffer length
  * @sgl: page buffer scatter-gather list (struct cxgbei_sgl_t)
  * @sgcnt: # of page buffers
@@ -298,15 +291,15 @@ unmap:
  * coalesce buffers as much as possible, and obtain dma addresses for
  * each page.
  *
- * Return the cxgbi_ulp2_gather_list constructed from the page buffers if the
+ * Return the cxgbei_ulp2_gather_list constructed from the page buffers if the
  * memory can be used for ddp. Return NULL otherwise.
  */
-struct cxgbi_ulp2_gather_list *cxgbi_ulp2_ddp_make_gl_from_iscsi_sgvec
+struct cxgbei_ulp2_gather_list *cxgbei_ulp2_ddp_make_gl_from_iscsi_sgvec
 			(unsigned int xferlen, cxgbei_sgl_t *sgl,
 			 unsigned int sgcnt, void *tdev,
 			 int gfp)
 {
-	struct cxgbi_ulp2_gather_list *gl;
+	struct cxgbei_ulp2_gather_list *gl;
 	cxgbei_sgl_t *sg = sgl;
 	struct page *sgpage = (struct page *)((u64)sg->sg_addr & (~PAGE_MASK));
 	unsigned int sglen = sg->sg_length;
@@ -322,7 +315,7 @@ struct cxgbi_ulp2_gather_list *cxgbi_ulp2_ddp_make_gl_from_iscsi_sgvec
 		return NULL;
 	}
 
-	gl = malloc(sizeof(struct cxgbi_ulp2_gather_list) +
+	gl = malloc(sizeof(struct cxgbei_ulp2_gather_list) +
 		     //npages * (sizeof(dma_addr_t) + sizeof(struct page *)),
 		     npages * (sizeof(struct dma_segments) + sizeof(struct page *)),
 			M_DEVBUF, M_NOWAIT | M_ZERO);
@@ -493,12 +486,12 @@ static int check_sgl_dma_addr_for_ddp(cxgbei_sgl_t *sgl, unsigned int sgcnt,
 #endif
 
 /**
- * cxgbi_ulp2_ddp_release_gl - release a page buffer list
+ * cxgbei_ulp2_ddp_release_gl - release a page buffer list
  * @gl: a ddp page buffer list
  * @pdev: pci_dev used for pci_unmap
- * free a ddp page buffer list resulted from cxgbi_ulp2_ddp_make_gl().
+ * free a ddp page buffer list resulted from cxgbei_ulp2_ddp_make_gl().
  */
-void cxgbi_ulp2_ddp_release_gl(struct cxgbi_ulp2_gather_list *gl,
+void cxgbei_ulp2_ddp_release_gl(struct cxgbei_ulp2_gather_list *gl,
 			   void *tdev)
 {
 	ddp_gl_unmap(tdev, gl);
@@ -506,7 +499,7 @@ void cxgbi_ulp2_ddp_release_gl(struct cxgbi_ulp2_gather_list *gl,
 }
 
 /**
- * cxgbi_ulp2_ddp_tag_reserve - set up ddp for a data transfer
+ * cxgbei_ulp2_ddp_tag_reserve - set up ddp for a data transfer
  * @ddp: adapter's ddp info
  * @tid: connection id
  * @tformat: tag format
@@ -517,13 +510,13 @@ void cxgbi_ulp2_ddp_release_gl(struct cxgbi_ulp2_gather_list *gl,
  * ddp setup for a given page buffer list and construct the ddp tag.
  * return 0 if success, < 0 otherwise.
  */
-int cxgbi_ulp2_ddp_tag_reserve(struct cxgbi_ulp2_ddp_info *ddp,
+int cxgbei_ulp2_ddp_tag_reserve(struct cxgbei_ulp2_ddp_info *ddp,
 				void *isock, unsigned int tid,
-				struct cxgbi_ulp2_tag_format *tformat,
-				u32 *tagp, struct cxgbi_ulp2_gather_list *gl,
+				struct cxgbei_ulp2_tag_format *tformat,
+				u32 *tagp, struct cxgbei_ulp2_gather_list *gl,
 				int gfp, int reply)
 {
-	struct cxgbi_ulp2_pagepod_hdr hdr;
+	struct cxgbei_ulp2_pagepod_hdr hdr;
 	unsigned int npods;
 	int idx = -1;
 	int err = -ENOMEM;
@@ -556,7 +549,7 @@ int cxgbi_ulp2_ddp_tag_reserve(struct cxgbi_ulp2_ddp_info *ddp,
 		return idx;
 	}
 
-	tag = cxgbi_ulp2_ddp_tag_base(idx, ddp, tformat, sw_tag);
+	tag = cxgbei_ulp2_ddp_tag_base(idx, ddp, tformat, sw_tag);
 	//printf("%s: sw_tag:0x%x idx:0x%x tag:0x%x\n", __func__, sw_tag, idx, tag);
 
 	hdr.rsvd = 0;
@@ -579,12 +572,12 @@ unmark_entries:
 }
 
 /**
- * cxgbi_ulp2_ddp_tag_release - release a ddp tag
+ * cxgbei_ulp2_ddp_tag_release - release a ddp tag
  * @ddp: adapter's ddp info
  * @tag: ddp tag
  * ddp cleanup for a given ddp tag and release all the resources held
  */
-void cxgbi_ulp2_ddp_tag_release(struct cxgbi_ulp2_ddp_info *ddp, u32 tag, iscsi_socket *isock)
+void cxgbei_ulp2_ddp_tag_release(struct cxgbei_ulp2_ddp_info *ddp, u32 tag, iscsi_socket *isock)
 {
 	u32 idx;
 
@@ -600,7 +593,7 @@ void cxgbi_ulp2_ddp_tag_release(struct cxgbi_ulp2_ddp_info *ddp, u32 tag, iscsi_
 	idx = (tag >> IPPOD_IDX_SHIFT) & ddp->idx_mask;
 	//printf("%s: tag:0x%x idx:0x%x nppods:0x%x\n", __func__, tag, idx, ddp->nppods);
 	if (idx < ddp->nppods) {
-		struct cxgbi_ulp2_gather_list *gl = ddp->gl_map[idx];
+		struct cxgbei_ulp2_gather_list *gl = ddp->gl_map[idx];
 		unsigned int npods;
 
 		if (!gl || !gl->nelem) {
@@ -613,22 +606,22 @@ void cxgbi_ulp2_ddp_tag_release(struct cxgbi_ulp2_ddp_info *ddp, u32 tag, iscsi_
 			      tag, idx, npods);
 		ddp->ddp_clear_map(ddp, gl, tag, idx, npods, isock);
 		ddp_unmark_entries(ddp, idx, npods);
-		cxgbi_ulp2_ddp_release_gl(gl, ddp->tdev);
+		cxgbei_ulp2_ddp_release_gl(gl, ddp->tdev);
 	} else
 		ddp_log_error("ddp tag 0x%x, idx 0x%x > max 0x%x.\n",
 			      tag, idx, ddp->nppods);
 }
 
 /**
- * cxgbi_ulp2_adapter_ddp_info - read the adapter's ddp information
+ * cxgbei_ulp2_adapter_ddp_info - read the adapter's ddp information
  * @ddp: adapter's ddp info
  * @tformat: tag format
  * @txsz: max tx pdu payload size, filled in by this func.
  * @rxsz: max rx pdu payload size, filled in by this func.
  * setup the tag format for a given iscsi entity
  */
-int cxgbi_ulp2_adapter_ddp_info(struct cxgbi_ulp2_ddp_info *ddp,
-			    struct cxgbi_ulp2_tag_format *tformat,
+int cxgbei_ulp2_adapter_ddp_info(struct cxgbei_ulp2_ddp_info *ddp,
+			    struct cxgbei_ulp2_tag_format *tformat,
 			    unsigned int *txsz, unsigned int *rxsz)
 {
 	unsigned char idx_bits;
@@ -659,15 +652,15 @@ int cxgbi_ulp2_adapter_ddp_info(struct cxgbi_ulp2_ddp_info *ddp,
 }
 
 /**
- * cxgbi_ulp2_ddp_cleanup - release the cxgbX adapter's ddp resource
+ * cxgbei_ulp2_ddp_cleanup - release the cxgbX adapter's ddp resource
  * @tdev: t4cdev adapter
  * release all the resource held by the ddp pagepod manager for a given
  * adapter if needed
  */
-void cxgbi_ulp2_ddp_cleanup(struct cxgbi_ulp2_ddp_info **ddp_pp)
+void cxgbei_ulp2_ddp_cleanup(struct cxgbei_ulp2_ddp_info **ddp_pp)
 {
 	int i = 0;
-	struct cxgbi_ulp2_ddp_info *ddp = *ddp_pp;
+	struct cxgbei_ulp2_ddp_info *ddp = *ddp_pp;
 
 	if (!ddp) {
 		ddp_log_error("%s: ddp NULL.\n", __func__);
@@ -677,10 +670,10 @@ void cxgbi_ulp2_ddp_cleanup(struct cxgbi_ulp2_ddp_info **ddp_pp)
 	ddp_log_info("tdev, release ddp 0x%p, ref %d.\n",
 			ddp, atomic_load_acq_int(&ddp->refcnt));
 
-	if (ddp && (cxgbi_counter_dec_and_read(&ddp->refcnt) == 0)) {
+	if (ddp && (cxgbei_counter_dec_and_read(&ddp->refcnt) == 0)) {
 		*ddp_pp = NULL;
 		while (i < ddp->nppods) {
-			struct cxgbi_ulp2_gather_list *gl = ddp->gl_map[i];
+			struct cxgbei_ulp2_gather_list *gl = ddp->gl_map[i];
 			if (gl) {
 				int npods = (gl->nelem + IPPOD_PAGES_MAX - 1)
 						>> IPPOD_PAGES_SHIFT;
@@ -693,7 +686,7 @@ void cxgbi_ulp2_ddp_cleanup(struct cxgbi_ulp2_ddp_info **ddp_pp)
 		}
 		if (ddp->rsvd_page_phys_addr)
 			bus_dmamap_unload(ddp->ulp_ddp_tag, ddp->ulp_ddp_map); //check this
-		cxgbi_ulp2_free_big_mem(ddp);
+		cxgbei_ulp2_free_big_mem(ddp);
 	}
 }
 
@@ -706,10 +699,10 @@ void cxgbi_ulp2_ddp_cleanup(struct cxgbi_ulp2_ddp_info **ddp_pp)
  * initialize the ddp pagepod manager for a given adapter
  */
 static void ddp_init(void *tdev,
-			struct cxgbi_ulp2_ddp_info **ddp_pp,
+			struct cxgbei_ulp2_ddp_info **ddp_pp,
 			struct ulp_iscsi_info *uinfo)
 {
-	struct cxgbi_ulp2_ddp_info *ddp = *ddp_pp;
+	struct cxgbei_ulp2_ddp_info *ddp = *ddp_pp;
 	unsigned int ppmax, bits;
 	int i, rc;
 	bus_addr_t pa = 0;
@@ -738,8 +731,8 @@ static void ddp_init(void *tdev,
 		bits = IPPOD_IDX_MAX_SIZE;
 	ppmax = (1 << (bits - 1)) - 1;
 
-	ddp = cxgbi_ulp2_alloc_big_mem(sizeof(struct cxgbi_ulp2_ddp_info) +
-			ppmax * (sizeof(struct cxgbi_ulp2_gather_list *) +
+	ddp = cxgbei_ulp2_alloc_big_mem(sizeof(struct cxgbei_ulp2_ddp_info) +
+			ppmax * (sizeof(struct cxgbei_ulp2_gather_list *) +
 			sizeof(struct mbuf*)));
 			//sizeof(unsigned char) + sizeof(struct mbuf*)));
 	if (!ddp) {
@@ -748,10 +741,10 @@ static void ddp_init(void *tdev,
 		return;
 	}
 	//ddp->colors = (unsigned char *)(ddp + 1);
-	ddp->gl_map = (struct cxgbi_ulp2_gather_list **)(ddp + 1);
+	ddp->gl_map = (struct cxgbei_ulp2_gather_list **)(ddp + 1);
 	*ddp_pp = ddp;
 
-	//ddp->gl_map = (struct cxgbi_ulp2_gather_list **)(ddp->colors +
+	//ddp->gl_map = (struct cxgbei_ulp2_gather_list **)(ddp->colors +
 	//		ppmax * sizeof(unsigned char));
 	mtx_init(&ddp->map_lock, "ddp lock", NULL,
 			MTX_DEF | MTX_DUPOK| MTX_RECURSE);
@@ -810,23 +803,23 @@ static void ddp_init(void *tdev,
 }
 
 /**
- * cxgbi_ulp2_ddp_init - initialize ddp functions
+ * cxgbei_ulp2_ddp_init - initialize ddp functions
  */
-void cxgbi_ulp2_ddp_init(void *tdev,
-			struct cxgbi_ulp2_ddp_info **ddp_pp,
+void cxgbei_ulp2_ddp_init(void *tdev,
+			struct cxgbei_ulp2_ddp_info **ddp_pp,
 			struct ulp_iscsi_info *uinfo)
 {
 	if (page_idx == DDP_PGIDX_MAX) {
-		page_idx = cxgbi_ulp2_ddp_find_page_index(PAGE_SIZE);
+		page_idx = cxgbei_ulp2_ddp_find_page_index(PAGE_SIZE);
 
 		if (page_idx == DDP_PGIDX_MAX) {
-			if (cxgbi_ulp2_ddp_adjust_page_table() < 0) {
+			if (cxgbei_ulp2_ddp_adjust_page_table() < 0) {
 				ddp_log_info("PAGE_SIZE %x, ddp disabled.\n",
 						PAGE_SIZE);
 				return;
 			}
 		}
-		page_idx = cxgbi_ulp2_ddp_find_page_index(PAGE_SIZE);
+		page_idx = cxgbei_ulp2_ddp_find_page_index(PAGE_SIZE);
 	}
 
 	ddp_init(tdev, ddp_pp, uinfo);

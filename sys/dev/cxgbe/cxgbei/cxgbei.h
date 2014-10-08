@@ -1,3 +1,6 @@
+/*
+ * Chelsio T5xx iSCSI driver
+ */
 #ifndef __CXGBEI_OFLD_H__
 #define __CXGBEI_OFLD_H__
 #include "mbufq.h"

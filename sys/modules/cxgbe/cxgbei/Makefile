@@ -6,8 +6,8 @@ CXGBE = ${.CURDIR}/../../../dev/cxgbe
 
 KMOD=	cxgbei	
 
-SRCS=  cxgbei_ofld.c
-SRCS+= 	cxgbi_ulp2_ddp.c 
+SRCS=  cxgbei.c
+SRCS+= 	cxgbei_ulp2_ddp.c 
 SRCS+=  icl_cxgbei.c
 SRCS+=  bus_if.h
 SRCS+=  device_if.h

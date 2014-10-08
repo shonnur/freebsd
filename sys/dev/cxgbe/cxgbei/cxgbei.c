@@ -25,9 +25,9 @@
 #include <common/t4_msg.h>
 #include <common/t4_regs.h>     /* for PCIE_MEM_ACCESS */
 #include <tom/t4_tom.h>
-#include "cxgbei_ofld.h"
+#include "cxgbei.h"
 
-#include "cxgbi_ulp2_ddp.h"
+#include "cxgbei_ulp2_ddp.h"
 #include <cam/scsi/scsi_all.h>
 #include <cam/scsi/scsi_da.h>
 #include <cam/ctl/ctl_io.h>
@@ -115,7 +115,7 @@ static char ppod_use_ulp_mem_write = 1;
  * functions to program the pagepod in h/w
  */
 #define MEMWIN0_BASE	0x1b800
-static int pcie_memwin_set_pagepod(struct cxgbi_ulp2_ddp_info *ddp,
+static int pcie_memwin_set_pagepod(struct cxgbei_ulp2_ddp_info *ddp,
 				struct toepcb *toep, void *ppod_hdr,
 				struct dma_segments *ds, unsigned int naddr,
 				unsigned int idx, unsigned int cnt)
@@ -162,7 +162,7 @@ static int pcie_memwin_set_pagepod(struct cxgbi_ulp2_ddp_info *ddp,
 	}
 	return 0;
 }
-static int pcie_memwin_clear_pagepod(struct cxgbi_ulp2_ddp_info *ddp, unsigned int idx,
+static int pcie_memwin_clear_pagepod(struct cxgbei_ulp2_ddp_info *ddp, unsigned int idx,
 				unsigned int cnt)
 {
 	struct toedev *tdev = ddp->tdev;
@@ -202,8 +202,8 @@ static void* t4_tdev2ddp(void *tdev)
 	return (sc->iscsi_softc);
 }
 static void inline ppod_set(struct pagepod *ppod,
-			struct cxgbi_ulp2_pagepod_hdr *hdr,
-			struct cxgbi_ulp2_gather_list *gl,
+			struct cxgbei_ulp2_pagepod_hdr *hdr,
+			struct cxgbei_ulp2_gather_list *gl,
 			unsigned int pidx)
 {
 	int i;
@@ -244,10 +244,10 @@ static inline void ulp_mem_io_set_hdr(struct adapter *sc, int tid, struct ulp_me
 #define ULPMEM_IDATA_MAX_NPPODS 1	/* 256/PPOD_SIZE */
 #define PCIE_MEMWIN_MAX_NPPODS 16	/* 1024/PPOD_SIZE */
 
-static int ppod_write_idata(struct cxgbi_ulp2_ddp_info *ddp,
-			struct cxgbi_ulp2_pagepod_hdr *hdr,
+static int ppod_write_idata(struct cxgbei_ulp2_ddp_info *ddp,
+			struct cxgbei_ulp2_pagepod_hdr *hdr,
 			unsigned int idx, unsigned int npods,
-			struct cxgbi_ulp2_gather_list *gl,
+			struct cxgbei_ulp2_gather_list *gl,
 			unsigned int gl_pidx, struct toepcb *toep)
 {
 	unsigned int dlen = PPOD_SIZE * npods;
@@ -284,10 +284,10 @@ static int ppod_write_idata(struct cxgbi_ulp2_ddp_info *ddp,
 	return 0;
 }
 
-static int t4_ddp_set_map(struct cxgbi_ulp2_ddp_info *ddp,
-			void *isockp, struct cxgbi_ulp2_pagepod_hdr *hdr,
+static int t4_ddp_set_map(struct cxgbei_ulp2_ddp_info *ddp,
+			void *isockp, struct cxgbei_ulp2_pagepod_hdr *hdr,
 			unsigned int idx, unsigned int npods,
-			struct cxgbi_ulp2_gather_list *gl, int reply)
+			struct cxgbei_ulp2_gather_list *gl, int reply)
 {
 	iscsi_socket *isock = (iscsi_socket *)isockp;
 	struct socket *sk;
@@ -331,7 +331,7 @@ static int t4_ddp_set_map(struct cxgbi_ulp2_ddp_info *ddp,
 	} else {
 		struct pagepod ppod;	/* only use the header portion */
 
-		memcpy(&ppod, hdr, sizeof(struct cxgbi_ulp2_pagepod_hdr));
+		memcpy(&ppod, hdr, sizeof(struct cxgbei_ulp2_pagepod_hdr));
 		err = pcie_memwin_set_pagepod(ddp, toep, (void *)&ppod,
 					gl->dma_sg, gl->nelem,
 					idx, npods);
@@ -339,8 +339,8 @@ static int t4_ddp_set_map(struct cxgbi_ulp2_ddp_info *ddp,
 	return err;
 }
 
-static void t4_ddp_clear_map(struct cxgbi_ulp2_ddp_info *ddp,
-			struct cxgbi_ulp2_gather_list *gl,
+static void t4_ddp_clear_map(struct cxgbei_ulp2_ddp_info *ddp,
+			struct cxgbei_ulp2_gather_list *gl,
 			unsigned int tag, unsigned int idx, unsigned int npods,
 			iscsi_socket *isock)
 {
@@ -388,7 +388,7 @@ typedef struct offload_device {
         unsigned int d_payload_tmax;
         unsigned int d_payload_rmax;
 
-	struct cxgbi_ulp2_tag_format d_tag_format;
+	struct cxgbei_ulp2_tag_format d_tag_format;
 	void    *d_tdev;
 	void    *d_pdev;
 	void* (*tdev2ddp)(void *tdev);
@@ -432,7 +432,7 @@ static void cxgbei_odev_cleanup(offload_device *odev)
 	t4_unregister_cpl_handler_with_tom(sc);
 	if (odev->d_flag & ODEV_FLAG_ULP_DDP_ENABLED) {
 		if (sc->iscsi_softc)
-			cxgbi_ulp2_ddp_cleanup((struct cxgbi_ulp2_ddp_info **)&sc->iscsi_softc);
+			cxgbei_ulp2_ddp_cleanup((struct cxgbei_ulp2_ddp_info **)&sc->iscsi_softc);
 	}
 	return;
 }
@@ -546,13 +546,13 @@ static int t4_sk_ddp_tag_reserve(iscsi_socket *isock, unsigned int xferlen,
 {
         offload_device *odev = isock->s_odev;
         struct toedev *tdev = odev->d_tdev;
-        struct cxgbi_ulp2_gather_list *gl;
+        struct cxgbei_ulp2_gather_list *gl;
         int err = -EINVAL;
 
-        gl = cxgbi_ulp2_ddp_make_gl_from_iscsi_sgvec(xferlen, sgl, sgcnt,
+        gl = cxgbei_ulp2_ddp_make_gl_from_iscsi_sgvec(xferlen, sgl, sgcnt,
                                         odev->d_tdev, 0);
         if (gl) {
-                err = cxgbi_ulp2_ddp_tag_reserve(odev->tdev2ddp(tdev),
+                err = cxgbei_ulp2_ddp_tag_reserve(odev->tdev2ddp(tdev),
                                                 isock,
                                                 isock->s_tid,
                                                 &odev->d_tag_format,
@@ -560,7 +560,7 @@ static int t4_sk_ddp_tag_reserve(iscsi_socket *isock, unsigned int xferlen,
                                                 0, 0);
                 if (err < 0) {
 			cxgbei_log_error("%s: ddp_tag_reserve failed\n", __func__);
-                        cxgbi_ulp2_ddp_release_gl(gl, odev->d_tdev);
+                        cxgbei_ulp2_ddp_release_gl(gl, odev->d_tdev);
 		}
         }
 
@@ -596,7 +596,7 @@ cxgbei_task_reserve_itt(struct icl_conn *ic, void **prv,
 
 		tdata->sc_ddp_tag = *itt;
 
-		if (cxgbi_ulp2_sw_tag_usable(&odev->d_tag_format,
+		if (cxgbei_ulp2_sw_tag_usable(&odev->d_tag_format,
 							tdata->sc_ddp_tag)) {
 			err = t4_sk_ddp_tag_reserve(isock, scmd->dxfer_len, sge,
 					 tdata->nsge, &tdata->sc_ddp_tag);
@@ -608,7 +608,7 @@ cxgbei_task_reserve_itt(struct icl_conn *ic, void **prv,
 out:
 	if (err < 0)
 		tdata->sc_ddp_tag =
-			cxgbi_ulp2_set_non_ddp_tag(&odev->d_tag_format, *itt);
+			cxgbei_ulp2_set_non_ddp_tag(&odev->d_tag_format, *itt);
 
 	return tdata->sc_ddp_tag;
 }
@@ -638,7 +638,7 @@ cxgbei_task_reserve_ttt(struct icl_conn *ic, void **prv, union ctl_io *io,
 	sge = tdata->sgl;
 
 	tdata->sc_ddp_tag = *ttt;
-	if (cxgbi_ulp2_sw_tag_usable(&odev->d_tag_format, tdata->sc_ddp_tag)) {
+	if (cxgbei_ulp2_sw_tag_usable(&odev->d_tag_format, tdata->sc_ddp_tag)) {
 		err = t4_sk_ddp_tag_reserve(isock, xferlen, sge, tdata->nsge,
 						&tdata->sc_ddp_tag);
 	} else {
@@ -648,7 +648,7 @@ cxgbei_task_reserve_ttt(struct icl_conn *ic, void **prv, union ctl_io *io,
 out:
 	if (err < 0)
 		tdata->sc_ddp_tag =
-			cxgbi_ulp2_set_non_ddp_tag(&odev->d_tag_format, *ttt);
+			cxgbei_ulp2_set_non_ddp_tag(&odev->d_tag_format, *ttt);
 	return tdata->sc_ddp_tag;
 }
 
@@ -657,13 +657,13 @@ static int t4_sk_ddp_tag_release(iscsi_socket *isock, unsigned int ddp_tag)
         offload_device *odev = isock->s_odev;
         struct toedev *tdev = odev->d_tdev;
 
-        cxgbi_ulp2_ddp_tag_release(odev->tdev2ddp(tdev), ddp_tag, isock);
+        cxgbei_ulp2_ddp_tag_release(odev->tdev2ddp(tdev), ddp_tag, isock);
         return 0;
 }
-static struct cxgbi_ulp2_ddp_info* t4_ddp_init(struct ifnet *dev,
+static struct cxgbei_ulp2_ddp_info* t4_ddp_init(struct ifnet *dev,
 						struct toedev *tdev)
 {
-	struct cxgbi_ulp2_ddp_info *ddp;
+	struct cxgbei_ulp2_ddp_info *ddp;
 	struct adapter *sc = tdev->tod_softc;
 	struct ulp_iscsi_info uinfo;
 
@@ -681,10 +681,10 @@ static struct cxgbi_ulp2_ddp_info* t4_ddp_init(struct ifnet *dev,
 		uinfo.llimit, uinfo.ulimit, sc->vres.iscsi.size,
 		uinfo.max_rxsz, sc->iscsi_softc);
 
-	cxgbi_ulp2_ddp_init((void *)tdev,
-			(struct cxgbi_ulp2_ddp_info **)&sc->iscsi_softc,
+	cxgbei_ulp2_ddp_init((void *)tdev,
+			(struct cxgbei_ulp2_ddp_info **)&sc->iscsi_softc,
 			&uinfo);
-	ddp = (struct cxgbi_ulp2_ddp_info *)sc->iscsi_softc;
+	ddp = (struct cxgbei_ulp2_ddp_info *)sc->iscsi_softc;
         if (ddp) {
 		unsigned int pgsz_order[4];
 		int i;
@@ -920,7 +920,7 @@ static void process_rx_data_ddp(struct socket *sk, struct mbuf *m)
         if (!(lcb->flags & SBUF_ULP_FLAG_DATA_RCVD)) {
                 lcb->flags |= SBUF_ULP_FLAG_DATA_DDPED;
 	}
-#ifdef __T4_DBG_DDP_FAILURE__
+//#ifdef __T4_DBG_DDP_FAILURE__
 //      else
         {
                 unsigned char *bhs = lmbuf->m_data;
@@ -939,7 +939,7 @@ static void process_rx_data_ddp(struct socket *sk, struct mbuf *m)
                         offset, dlen, ttt, ntohl(cpl->seq), ntohl(cpl->ddpvld));
                 }
                 if ((opcode & 0x3F) == 0x25) {
-                        //if (!(lcb->flags & SBUF_ULP_FLAG_DATA_DDPED))
+                        if (!(lcb->flags & SBUF_ULP_FLAG_DATA_DDPED))
                         printf("CPL_RX_DATA_DDP: tid 0x%x, data-in %s ddp'ed (%u+%u), seq 0x%x, ddpvld 0x%x.\n",
                         toep->tid,
                         (lcb->flags & SBUF_ULP_FLAG_DATA_DDPED) ? "IS" : "NOT",
@@ -947,7 +947,7 @@ static void process_rx_data_ddp(struct socket *sk, struct mbuf *m)
                 }
                 }
         }
-#endif
+//#endif
 
 	iscsi_conn_receive_pdu(isock);
 
@@ -1227,7 +1227,7 @@ static int cxgbei_set_ulp_mode(struct socket *so, struct toepcb *toep,
 
 static offload_device *add_cxgbei_dev(struct ifnet *dev, struct toedev *tdev)
 {
-        struct cxgbi_ulp2_ddp_info *ddp;
+        struct cxgbei_ulp2_ddp_info *ddp;
 	offload_device *odev = NULL;
 	odev = offload_device_new(tdev);
 	if (odev == NULL) {
@@ -1247,8 +1247,8 @@ static offload_device *add_cxgbei_dev(struct ifnet *dev, struct toedev *tdev)
 			dev->if_xname, odev, ddp);
 
 		odev->d_flag |= ODEV_FLAG_ULP_DDP_ENABLED;
-		cxgbi_ulp2_adapter_ddp_info(ddp,
-			(struct cxgbi_ulp2_tag_format *)&odev->d_tag_format,
+		cxgbei_ulp2_adapter_ddp_info(ddp,
+			(struct cxgbei_ulp2_tag_format *)&odev->d_tag_format,
 			&odev->d_payload_tmax, &odev->d_payload_rmax);
 	}
 	return odev;
@@ -1287,7 +1287,7 @@ void cxgbei_cleanup_task(void *conn, void *ofld_priv)
 	tdata = (cxgbei_task_data *)(ofld_priv);
 	if (!tdata) return;	
 	
-	if (cxgbi_ulp2_is_ddp_tag(&odev->d_tag_format, tdata->sc_ddp_tag))
+	if (cxgbei_ulp2_is_ddp_tag(&odev->d_tag_format, tdata->sc_ddp_tag))
 		t4_sk_ddp_tag_release(isock, tdata->sc_ddp_tag);
 	memset(tdata, 0, sizeof(*tdata));	
 	//task->ofld_priv = NULL;
@@ -1336,7 +1336,7 @@ cxgbei_parse_pdu_tag(struct socket *so, uint32_t itt)
 	if (!isock) return itt;
 
 	odev = isock->s_odev;
-	return cxgbi_ulp2_tag_nonrsvd_bits(&odev->d_tag_format, ntohl(itt));
+	return cxgbei_ulp2_tag_nonrsvd_bits(&odev->d_tag_format, ntohl(itt));
 }
 #endif
 
@@ -1437,12 +1437,12 @@ int cxgbei_conn_close(struct socket *so)
 
 static int cxgbei_init(void)
 {
-	return cxgbi_ulp2_init();
+	return cxgbei_ulp2_init();
 }
 
 static void cxgbei_cleanup(void)
 {
-	cxgbi_ulp2_exit();
+	cxgbei_ulp2_exit();
 	offload_device_remove();
 	cxgbei_log_info("cxgbei_cleanup module: unloaded Sucessfully.\n");
 }
