@@ -113,6 +113,8 @@ static struct ulp_mbuf_cb * find_ulp_mbuf_cb(struct mbuf *m)
  * The location of the pagepod entry is encoded into ddp tag which is used as
  * the base for ITT/TTT.
  */
+//#define T4_DDP
+#ifdef T4_DDP
 static char ppod_use_ulp_mem_write = 1;
 /*
  * functions to program the pagepod in h/w
@@ -375,6 +377,7 @@ static void t4_ddp_clear_map(struct cxgbei_ulp2_ddp_info *ddp,
 		err = pcie_memwin_clear_pagepod(ddp, idx, npods);
 	}
 }
+#endif
 
 /*
  * cxgbei device management
@@ -551,6 +554,12 @@ static int t4_sk_ddp_tag_reserve(iscsi_socket *isock, unsigned int xferlen,
         struct toedev *tdev = odev->d_tdev;
         struct cxgbei_ulp2_gather_list *gl;
         int err = -EINVAL;
+	struct adapter *sc = tdev->tod_softc;
+	struct cxgbei_ulp2_ddp_info *ddp;
+
+        ddp = (struct cxgbei_ulp2_ddp_info *)sc->iscsi_softc;
+        if (!ddp)
+                return -ENOMEM;
 
         gl = cxgbei_ulp2_ddp_make_gl_from_iscsi_sgvec(xferlen, sgl, sgcnt,
                                         odev->d_tdev, 0);
@@ -663,6 +672,7 @@ static int t4_sk_ddp_tag_release(iscsi_socket *isock, unsigned int ddp_tag)
         cxgbei_ulp2_ddp_tag_release(odev->tdev2ddp(tdev), ddp_tag, isock);
         return 0;
 }
+#ifdef T4_DDP
 static struct cxgbei_ulp2_ddp_info* t4_ddp_init(struct ifnet *dev,
 						struct toedev *tdev)
 {
@@ -702,6 +712,7 @@ static struct cxgbei_ulp2_ddp_info* t4_ddp_init(struct ifnet *dev,
 	}
 	return ddp;
 }
+#endif
 
 static struct socket * cpl_find_sock(struct adapter *sc, struct mbuf *m)
 {
@@ -741,11 +752,14 @@ static void process_rx_iscsi_hdr(struct socket *sk, struct mbuf *m)
 		cxgbei_log_error("m:%p doesn't have a M_PKTHDR can't allocate m_tag\n", m);
         }
 
+
+	SOCK_LOCK(sk);	
 	/* allocate m_tag to hold ulp info */
         cb = get_ulp_mbuf_cb(m);
         if (cb == NULL) {
                 cxgbei_log_error("Error allocation m_tag\n");
-                return;
+		goto err_out;
+                //return;
         }
         cb->seq = ntohl(cpl->seq);
         /* strip off CPL header */
@@ -753,7 +767,7 @@ static void process_rx_iscsi_hdr(struct socket *sk, struct mbuf *m)
 
 	/* figure out if this is the pdu header or data */
         cb->ulp_mode = ULP_MODE_ISCSI;
-	mtx_lock(&isock->iscsi_rcv_mbufq.lock);
+	//mtx_lock(&isock->iscsi_rcv_mbufq.lock);
         if (!isock->mbuf_ulp_lhdr) {
                 iscsi_socket *isock = (iscsi_socket *)(sk)->so_emuldata;
 
@@ -767,7 +781,7 @@ static void process_rx_iscsi_hdr(struct socket *sk, struct mbuf *m)
                                 "tid 0x%x, CPL_ISCSI_HDR, BAD seq got 0x%x exp 0x%x.\n",
                                 toep->tid,
                                 cb->seq, tp->rcv_nxt);
-				mtx_unlock(&isock->iscsi_rcv_mbufq.lock);
+				//mtx_unlock(&isock->iscsi_rcv_mbufq.lock);
                         goto err_out;
                 }
                 byte = m->m_data;
@@ -808,11 +822,15 @@ static void process_rx_iscsi_hdr(struct socket *sk, struct mbuf *m)
                 	m->m_len += 4 - (m->m_len % 4);
 		}
         }
+	//mtx_lock(&isock->iscsi_rcv_mbufq.lock);
+	//SOCK_LOCK(sk);	
 	mbufq_tail(&isock->iscsi_rcv_mbufq, m);
-	mtx_unlock(&isock->iscsi_rcv_mbufq.lock);
+	SOCK_UNLOCK(sk);
+	//mtx_unlock(&isock->iscsi_rcv_mbufq.lock);
         return;
 
 err_out:
+	SOCK_UNLOCK(sk);	
         m_freem(m);
         return;
 }
@@ -831,6 +849,7 @@ static void iscsi_conn_receive_pdu(struct iscsi_socket *isock)
 		cxgbei_log_error("%s: failed to alloc icl_pdu\n", __func__);
 		return;
 	}
+	//SOCK_LOCK(isock->sock);
 	m = mbufq_peek(&isock->iscsi_rcv_mbufq);
 	if (m) {
                 cb = find_ulp_mbuf_cb(m);
@@ -866,10 +885,12 @@ static void iscsi_conn_receive_pdu(struct iscsi_socket *isock)
 		response->ip_ofld_prv0 = 1;
 		//printf("%s: response:%p data DDPed\n", __func__, response);
 	}
+	//SOCK_UNLOCK(isock->sock);
 	(ic->ic_receive)(response);
 	return;
 
 err_out:
+	//SOCK_UNLOCK(isock->sock);
 	free(response, M_CXGBEI);
 	return;
 }
@@ -891,7 +912,8 @@ static void process_rx_data_ddp(struct socket *sk, struct mbuf *m)
                 m_freem(m);
                 return;
         }
-	mtx_lock(&isock->iscsi_rcv_mbufq.lock);
+	//mtx_lock(&isock->iscsi_rcv_mbufq.lock);
+	SOCK_LOCK(sk);
         lmbuf = isock->mbuf_ulp_lhdr;
         if (lmbuf->m_nextpkt) {
                 lcb1 = find_ulp_mbuf_cb(lmbuf->m_nextpkt);
@@ -900,7 +922,8 @@ static void process_rx_data_ddp(struct socket *sk, struct mbuf *m)
         lcb = find_ulp_mbuf_cb(isock->mbuf_ulp_lhdr);
         if (!lcb) {
                 cxgbei_log_error("mtag NULL lmbuf :%p\n", lmbuf);
-		mtx_unlock(&isock->iscsi_rcv_mbufq.lock);
+		//mtx_unlock(&isock->iscsi_rcv_mbufq.lock);
+		SOCK_UNLOCK(sk);
                 return;
         }
         lcb->flags |= SBUF_ULP_FLAG_STATUS_RCVD;
@@ -925,7 +948,7 @@ static void process_rx_data_ddp(struct socket *sk, struct mbuf *m)
         if (!(lcb->flags & SBUF_ULP_FLAG_DATA_RCVD)) {
                 lcb->flags |= SBUF_ULP_FLAG_DATA_DDPED;
 	}
-//#ifdef __T4_DBG_DDP_FAILURE__
+#ifdef __T4_DBG_DDP_FAILURE__
 //      else
         {
                 unsigned char *bhs = lmbuf->m_data;
@@ -952,9 +975,10 @@ static void process_rx_data_ddp(struct socket *sk, struct mbuf *m)
                 }
                 }
         }
-//#endif
+#endif
 
 	iscsi_conn_receive_pdu(isock);
+	SOCK_UNLOCK(sk);
 
 	/* update rx credits */
 	INP_WLOCK(inp);
@@ -965,7 +989,7 @@ static void process_rx_data_ddp(struct socket *sk, struct mbuf *m)
 			sk, toep->sb_cc, tp->rcv_nxt, tp->rcv_wnd);
 	t4_rcvd(&toep->td->tod, tp);
 	INP_WUNLOCK(inp);
-	mtx_unlock(&isock->iscsi_rcv_mbufq.lock);
+	//mtx_unlock(&isock->iscsi_rcv_mbufq.lock);
 	m_freem(m);
 }
 
@@ -1067,11 +1091,14 @@ static int t4_ulp_mbuf_push(struct socket *so, struct mbuf *m)
 	struct toepcb *toep = tp->t_toe;
 	struct inpcb *inp = so_sotoinpcb(so);
 	iscsi_socket *isock = (iscsi_socket *)(so)->so_emuldata;;
+	struct sockbuf *sb = &so->so_snd;
 
 	/* append mbuf to ULP queue */
-	mtx_lock(&isock->ulp2_writeq.lock);
+	//mtx_lock(&isock->ulp2_writeq.lock);
+	SOCKBUF_LOCK(sb);
 	mbufq_tail(&isock->ulp2_writeq, m);
-	mtx_unlock(&isock->ulp2_writeq.lock);
+	//mtx_unlock(&isock->ulp2_writeq.lock);
+	SOCKBUF_UNLOCK(sb);
 
 	INP_WLOCK(inp);
 	t4_ulp_push_frames(toep->td->tod.tod_softc, toep, 0);
@@ -1094,22 +1121,29 @@ static struct mbuf *iscsi_queue_handler_callback(struct socket *sk,
 
         switch(cmd) {
                 case 0:/* PEEK */
+			SOCKBUF_LOCK(&sk->so_snd);
                         m0 = mbufq_peek(&isock->ulp2_writeq);
+			SOCKBUF_UNLOCK(&sk->so_snd);
                 break;
                 case 1:/* QUEUE_LEN */
+			SOCKBUF_LOCK(&sk->so_snd);
                         *qlen = mbufq_len(&isock->ulp2_writeq);
                         m0 = mbufq_peek(&isock->ulp2_writeq);
+			SOCKBUF_UNLOCK(&sk->so_snd);
                 break;
                 case 2:/* DEQUEUE */
-			mtx_lock(&isock->ulp2_writeq.lock);
+			//mtx_lock(&isock->ulp2_writeq.lock);
+			SOCKBUF_LOCK(&sk->so_snd);
                         m0 = mbufq_dequeue(&isock->ulp2_writeq);
-			mtx_unlock(&isock->ulp2_writeq.lock);
+			//mtx_unlock(&isock->ulp2_writeq.lock);
+			//SOCKBUF_UNLOCK(&sk->so_snd);
 
                         mtx_lock(&isock->ulp2_wrq.lock);
                         mbufq_tail(&isock->ulp2_wrq, m0);
                         mtx_unlock(&isock->ulp2_wrq.lock);
 
                         m0 = mbufq_peek(&isock->ulp2_writeq);
+			SOCKBUF_UNLOCK(&sk->so_snd);
                 break;
         }
         return m0;
@@ -1232,7 +1266,9 @@ static int cxgbei_set_ulp_mode(struct socket *so, struct toepcb *toep,
 
 static offload_device *add_cxgbei_dev(struct ifnet *dev, struct toedev *tdev)
 {
+#ifdef T4_DDP
         struct cxgbei_ulp2_ddp_info *ddp;
+#endif
 	offload_device *odev = NULL;
 	odev = offload_device_new(tdev);
 	if (odev == NULL) {
@@ -1245,6 +1281,7 @@ static offload_device *add_cxgbei_dev(struct ifnet *dev, struct toedev *tdev)
 	odev->d_ulp_rx_datagap = sizeof(struct cpl_iscsi_hdr_no_rss);
 	odev->d_flag = ODEV_FLAG_ULP_CRC_ENABLED;
 
+#ifdef T4_DDP
 	odev->tdev2ddp = t4_tdev2ddp;
 	ddp = t4_ddp_init(dev, tdev);
 	if (ddp) {
@@ -1256,6 +1293,7 @@ static offload_device *add_cxgbei_dev(struct ifnet *dev, struct toedev *tdev)
 			(struct cxgbei_ulp2_tag_format *)&odev->d_tag_format,
 			&odev->d_payload_tmax, &odev->d_payload_rmax);
 	}
+#endif
 	return odev;
 }
 

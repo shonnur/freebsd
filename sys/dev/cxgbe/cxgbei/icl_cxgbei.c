@@ -135,7 +135,7 @@ DEFINE_CLASS(icl_cxgbei, icl_cxgbei_methods, sizeof(struct icl_conn));
  */
 static void	icl_conn_close(struct icl_conn *ic);
 
-#if 0
+#if 1
 static void
 icl_conn_fail(struct icl_conn *ic)
 {
@@ -150,7 +150,7 @@ icl_conn_fail(struct icl_conn *ic)
 }
 #endif
 
-#if 0
+#if 1
 static struct mbuf *
 icl_conn_receive(struct icl_conn *ic, size_t len)
 {
@@ -256,7 +256,7 @@ icl_cxgbei_conn_new_pdu(struct icl_conn *ic, int flags)
 	return (ip);
 }
 
-#if 0
+#if 1
 static int
 icl_pdu_ahs_length(const struct icl_pdu *request)
 {
@@ -329,7 +329,7 @@ icl_conn_build_tasktag(struct icl_conn *ic, uint32_t tag)
 	return (tag);
 }
 
-#if 0
+#if 1
 static int
 icl_pdu_receive_bhs(struct icl_pdu *request, size_t *availablep)
 {
@@ -599,7 +599,7 @@ printf("%s:%d ENTRY\n", __func__, __LINE__);
  * Somewhat contrary to the name, this attempts to receive only one
  * "part" of PDU at a time; call it repeatedly until it returns non-NULL.
  */
-#if 0
+#if 1
 static struct icl_pdu *
 icl_conn_receive_pdu(struct icl_conn *ic, size_t *availablep)
 {
@@ -751,7 +751,7 @@ printf("%s:%d ENTRY\n", __func__, __LINE__);
 }
 #endif
 
-#if 0
+#if 1
 static void
 icl_conn_receive_pdus(struct icl_conn *ic, size_t available)
 {
@@ -809,7 +809,7 @@ printf("%s:%d ENTRY\n", __func__, __LINE__);
 }
 #endif
 
-#if 0 
+#if 1 
 static void
 icl_receive_thread(void *arg)
 {
@@ -900,7 +900,7 @@ icl_pdu_finalize(struct icl_pdu *request)
 	return (0);
 }
 
-#if 0
+#if 1
 static void
 icl_conn_send_pdus(struct icl_conn *ic, struct icl_pdu_stailq *queue)
 {
@@ -908,7 +908,7 @@ icl_conn_send_pdus(struct icl_conn *ic, struct icl_pdu_stailq *queue)
 	struct socket *so;
 	size_t available, size, size2;
 	int coalesced, error;
-printf("%s:%d ENTRY\n", __func__, __LINE__);
+//printf("%s:%d ENTRY\n", __func__, __LINE__);
 
 	ICL_CONN_LOCK_ASSERT_NOT(ic);
 
@@ -1016,7 +1016,7 @@ printf("%s:%d ENTRY\n", __func__, __LINE__);
 }
 #endif
 
-#if 0
+#if 1
 static void
 icl_send_thread(void *arg)
 {
@@ -1182,6 +1182,20 @@ icl_pdu_queue(struct icl_pdu *ip)
 
 	icl_pdu_finalize(ip);
 	cxgbei_conn_xmit_pdu(ic, ip);
+#if 0 
+        if (!STAILQ_EMPTY(&ic->ic_to_send)) {
+                STAILQ_INSERT_TAIL(&ic->ic_to_send, ip, ip_next);
+                /*
+                 * If the queue is not empty, someone else had already
+                 * signaled the send thread; no need to do that again,
+                 * just return.
+                 */
+                return;
+        }
+
+        STAILQ_INSERT_TAIL(&ic->ic_to_send, ip, ip_next);
+        cv_signal(&ic->ic_send_cv);
+#endif
 }
 
 void
@@ -1295,7 +1309,7 @@ icl_conn_start(struct icl_conn *ic)
 	/*
 	 * Start threads.
 	 */
-#if 0
+#if 1
 	error = kthread_add(icl_send_thread, ic, NULL, NULL, 0, 0, "%stx",
 	    ic->ic_name);
 	if (error != 0) {
@@ -1498,6 +1512,7 @@ int
 icl_cxgbei_conn_task_setup(struct icl_conn *ic, void **prvp, struct ccb_scsiio *csio,
     void *iop2, uint32_t *tag)
 {
+#if 0
 	void *prv;
 
 	*tag = icl_conn_build_tasktag(ic, *tag);
@@ -1509,6 +1524,7 @@ icl_cxgbei_conn_task_setup(struct icl_conn *ic, void **prvp, struct ccb_scsiio *
 	*prvp = prv;
 
 	cxgbei_conn_task_reserve_itt(ic, prvp, csio, tag);
+#endif
 
 	return (0);
 }
