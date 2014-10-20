@@ -80,8 +80,8 @@ static inline int cxgbei_ulp2_sw_tag_usable(struct cxgbei_ulp2_tag_format *tform
 					uint32_t sw_tag)
 {
 	sw_tag >>= (32 - tformat->rsvd_bits + tformat->rsvd_shift);
-	//printf("%s: sw_tag:0x%x !sw_tag:0x%x rsvd_bits:%d rsvd_shift:%d\n",
-	//		__func__, sw_tag, !sw_tag, tformat->rsvd_bits, tformat->rsvd_shift);
+	//printf("newsw_tag:0x%x !sw_tag:0x%x rsvd_bits:%d rsvd_shift:%d\n",
+	//		sw_tag, !sw_tag, tformat->rsvd_bits, tformat->rsvd_shift);
 	return !sw_tag;
 }
 
@@ -221,10 +221,8 @@ struct cxgbei_ulp2_ddp_info {
 			iscsi_socket *isock);
 
 	struct mtx map_lock;
-	struct mtx win0_lock;
 	bus_dma_tag_t ulp_ddp_tag;
 	bus_dmamap_t ulp_ddp_map;
-	//unsigned char *colors;
 	struct cxgbei_ulp2_gather_list **gl_map;
 };
 static inline uint32_t cxgbei_ulp2_ddp_tag_base(unsigned int idx, struct cxgbei_ulp2_ddp_info *ddp, 
@@ -242,9 +240,14 @@ static inline uint32_t cxgbei_ulp2_ddp_tag_base(unsigned int idx, struct cxgbei_
         return sw_tag | (idx << 6);// | ddp->colors[idx];
 }
 
-int t3_ulp_set_tcb_field(void *tdev, unsigned int , int);
-
 #define ISCSI_PDU_NONPAYLOAD_LEN	312 /* bhs(48) + ahs(256) + digest(8) */
+
+/*
+ * align pdu size to multiple of 512 for better performance
+ */
+#define cxgbei_align_pdu_size(n) do { n = (n) & (~511); } while (0)
+
+#define ULP2_DFLT_PKT_SIZE	8192
 #define ULP2_MAX_PKT_SIZE	16224
 #define ULP2_MAX_PDU_PAYLOAD	(ULP2_MAX_PKT_SIZE - ISCSI_PDU_NONPAYLOAD_LEN)
 #define IPPOD_PAGES_MAX		4

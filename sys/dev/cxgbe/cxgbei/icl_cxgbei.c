@@ -135,7 +135,6 @@ DEFINE_CLASS(icl_cxgbei, icl_cxgbei_methods, sizeof(struct icl_conn));
  */
 static void	icl_conn_close(struct icl_conn *ic);
 
-#if 1
 static void
 icl_conn_fail(struct icl_conn *ic)
 {
@@ -148,9 +147,7 @@ icl_conn_fail(struct icl_conn *ic)
 	ic->ic_socket->so_error = EDOOFUS;
 	(ic->ic_error)(ic);
 }
-#endif
 
-#if 1
 static struct mbuf *
 icl_conn_receive(struct icl_conn *ic, size_t len)
 {
@@ -179,7 +176,6 @@ printf("%s:%d ENTRY\n", __func__, __LINE__);
 
 	return (m);
 }
-#endif
 
 struct icl_pdu *
 icl_conn_new_empty_pdu(struct icl_conn *ic, int flags);
@@ -256,14 +252,12 @@ icl_cxgbei_conn_new_pdu(struct icl_conn *ic, int flags)
 	return (ip);
 }
 
-#if 1
 static int
 icl_pdu_ahs_length(const struct icl_pdu *request)
 {
 
 	return (request->ip_bhs->bhs_total_ahs_len * 4);
 }
-#endif
 
 static size_t
 icl_pdu_data_segment_length(const struct icl_pdu *request)
@@ -322,14 +316,9 @@ icl_pdu_size(const struct icl_pdu *response)
 static uint32_t
 icl_conn_build_tasktag(struct icl_conn *ic, uint32_t tag)
 {
-
-	/* itt must be from 0-255, rest of the itt bits are used by HW */
-	return (tag % 255);
-
-	return (tag);
+	return (tag % CXGBEI_MAX_TAG);
 }
 
-#if 1
 static int
 icl_pdu_receive_bhs(struct icl_pdu *request, size_t *availablep)
 {
@@ -593,13 +582,11 @@ printf("%s:%d ENTRY\n", __func__, __LINE__);
 
 	return (0);
 }
-#endif
 
 /*
  * Somewhat contrary to the name, this attempts to receive only one
  * "part" of PDU at a time; call it repeatedly until it returns non-NULL.
  */
-#if 1
 static struct icl_pdu *
 icl_conn_receive_pdu(struct icl_conn *ic, size_t *availablep)
 {
@@ -749,9 +736,7 @@ printf("%s:%d ENTRY\n", __func__, __LINE__);
 
 	return (NULL);
 }
-#endif
 
-#if 1
 static void
 icl_conn_receive_pdus(struct icl_conn *ic, size_t available)
 {
@@ -807,9 +792,7 @@ printf("%s:%d ENTRY\n", __func__, __LINE__);
 		(ic->ic_receive)(response);
 	}
 }
-#endif
 
-#if 1 
 static void
 icl_receive_thread(void *arg)
 {
@@ -853,7 +836,6 @@ icl_receive_thread(void *arg)
 	ICL_CONN_UNLOCK(ic);
 	kthread_exit();
 }
-#endif
 
 static int
 icl_soupcall_receive(struct socket *so, void *arg, int waitflag)
@@ -900,7 +882,6 @@ icl_pdu_finalize(struct icl_pdu *request)
 	return (0);
 }
 
-#if 1
 static void
 icl_conn_send_pdus(struct icl_conn *ic, struct icl_pdu_stailq *queue)
 {
@@ -1014,9 +995,7 @@ icl_conn_send_pdus(struct icl_conn *ic, struct icl_pdu_stailq *queue)
 		icl_pdu_free(request);
 	}
 }
-#endif
 
-#if 1
 static void
 icl_send_thread(void *arg)
 {
@@ -1087,7 +1066,6 @@ icl_send_thread(void *arg)
 	ICL_CONN_UNLOCK(ic);
 	kthread_exit();
 }
-#endif
 
 static int
 icl_soupcall_send(struct socket *so, void *arg, int waitflag)
@@ -1512,7 +1490,7 @@ int
 icl_cxgbei_conn_task_setup(struct icl_conn *ic, void **prvp, struct ccb_scsiio *csio,
     void *iop2, uint32_t *tag)
 {
-#if 0
+#if 1
 	void *prv;
 
 	*tag = icl_conn_build_tasktag(ic, *tag);
@@ -1569,7 +1547,7 @@ static int
 icl_cxgbei_limits(size_t *limitp)
 {
 
-	*limitp = 8 * 1024;
+	*limitp = ULP2_DFLT_PKT_SIZE;
 
 	return (0);
 }

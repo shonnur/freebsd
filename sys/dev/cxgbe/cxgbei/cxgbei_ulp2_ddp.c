@@ -246,7 +246,7 @@ static inline int ddp_gl_map(struct toedev *tdev,
 
 	ddp = (struct cxgbei_ulp2_ddp_info *)sc->iscsi_softc;
 	if (!ddp) {
-		printf("%s: ERROR tdev:%p sc:%p ddp:%p\n", __func__, tdev, sc, ddp);
+		//printf("%s: ERROR tdev:%p sc:%p ddp:%p\n", __func__, tdev, sc, ddp);
 		return -ENOMEM;
 	}
 	mtx_lock(&ddp->map_lock);
@@ -369,7 +369,7 @@ struct cxgbei_ulp2_gather_list *cxgbei_ulp2_ddp_make_gl_from_iscsi_sgvec
 	return gl;
 
 error_out:
-	printf("%s error_out sgcnt:%d xferlen:%d\n", __func__, sgcnt, xferlen);
+	//printf("%s error_out sgcnt:%d xferlen:%d\n", __func__, sgcnt, xferlen);
 	free(gl, M_DEVBUF);
 	return NULL;
 }
@@ -749,8 +749,6 @@ static void ddp_init(void *tdev,
 	mtx_init(&ddp->map_lock, "ddp lock", NULL,
 			MTX_DEF | MTX_DUPOK| MTX_RECURSE);
 
-	mtx_init(&ddp->win0_lock, "win0 lock", NULL,
-				MTX_DEF | MTX_DUPOK| MTX_RECURSE);
 	atomic_set_acq_int(&ddp->refcnt, 1);
 
 	/* dma_tag create */
