@@ -8,7 +8,6 @@
 
 #include <sys/malloc.h>
 #include <sys/sglist.h>
-
 #include <sys/pciio.h>
 
 #include <vm/vm.h>
@@ -64,7 +63,8 @@ typedef struct cxgbei_ulp2_tag_format {
  *
  * return true if the tag is a ddp tag, false otherwise.
  */
-static inline int cxgbei_ulp2_is_ddp_tag(struct cxgbei_ulp2_tag_format *tformat, uint32_t tag)
+static inline int
+cxgbei_ulp2_is_ddp_tag(struct cxgbei_ulp2_tag_format *tformat, uint32_t tag)
 {
 	return !(tag & (1 << (tformat->rsvd_bits + tformat->rsvd_shift - 1)));
 }
@@ -76,12 +76,13 @@ static inline int cxgbei_ulp2_is_ddp_tag(struct cxgbei_ulp2_tag_format *tformat,
  *
  * return true if the tag can be used for hw ddp tag, false otherwise.
  */
-static inline int cxgbei_ulp2_sw_tag_usable(struct cxgbei_ulp2_tag_format *tformat,
+static inline int
+cxgbei_ulp2_sw_tag_usable(struct cxgbei_ulp2_tag_format *tformat,
 					uint32_t sw_tag)
 {
 	sw_tag >>= (32 - tformat->rsvd_bits + tformat->rsvd_shift);
-	//printf("newsw_tag:0x%x !sw_tag:0x%x rsvd_bits:%d rsvd_shift:%d\n",
-	//		sw_tag, !sw_tag, tformat->rsvd_bits, tformat->rsvd_shift);
+	//printf("%s: sw_tag:0x%x !sw_tag:0x%x rsvd_bits:%d rsvd_shift:%d\n",
+	//__funct__, sw_tag, !sw_tag, tformat->rsvd_bits, tformat->rsvd_shift);
 	return !sw_tag;
 }
 
@@ -92,7 +93,8 @@ static inline int cxgbei_ulp2_sw_tag_usable(struct cxgbei_ulp2_tag_format *tform
  *
  * insert 1 at the upper most reserved bit to mark it as an invalid ddp tag.
  */
-static inline uint32_t cxgbei_ulp2_set_non_ddp_tag(struct cxgbei_ulp2_tag_format *tformat,
+static inline uint32_t
+cxgbei_ulp2_set_non_ddp_tag(struct cxgbei_ulp2_tag_format *tformat,
 					 uint32_t sw_tag)
 {
 	uint32_t rsvd_bits = tformat->rsvd_bits + tformat->rsvd_shift;
@@ -100,7 +102,7 @@ static inline uint32_t cxgbei_ulp2_set_non_ddp_tag(struct cxgbei_ulp2_tag_format
                 u32 v1 = sw_tag & ((1 << (rsvd_bits - 1)) - 1);
                 u32 v2 = (sw_tag >> (rsvd_bits - 1)) << rsvd_bits;
 		//printf("%s: sw_tag:0x%x v1:0x%x v2:0x%x returning:0x%x\n",
-		//	__func__, sw_tag, v1, v2, (v2 | (1 << (rsvd_bits - 1)) | v1));
+		//__func__, sw_tag, v1, v2, (v2 | (1 << (rsvd_bits - 1)) | v1));
                 return v2 | (1 << (rsvd_bits - 1)) | v1;
         }
 
@@ -116,7 +118,8 @@ static inline uint32_t cxgbei_ulp2_set_non_ddp_tag(struct cxgbei_ulp2_tag_format
  *
  * return the reserved bits in the tag
  */
-static inline uint32_t cxgbei_ulp2_tag_rsvd_bits(struct cxgbei_ulp2_tag_format *tformat,
+static inline uint32_t
+cxgbei_ulp2_tag_rsvd_bits(struct cxgbei_ulp2_tag_format *tformat,
 				       uint32_t tag)
 {
 	if (cxgbei_ulp2_is_ddp_tag(tformat, tag))
@@ -162,8 +165,8 @@ struct dma_segments {
 struct cxgbei_ulp2_gather_list {
 	uint32_t tag;
 	uint32_t tid;
-	uint32_t port_id;		/* t4 only */
-	void *egress_dev;		/* t4 only */
+	uint32_t port_id;
+	void *egress_dev;
 	unsigned int length;
 	unsigned int offset;
 	unsigned int nelem;
@@ -176,7 +179,7 @@ struct cxgbei_ulp2_gather_list {
 
 struct cxgbei_ulp2_pagepod_hdr;
 /**
- * struct cxgbei_ulp2_ddp_info - cxgb3i direct data placement for pdu payload
+ * struct cxgbei_ulp2_ddp_info - direct data placement for pdu payload
  *
  * @list:	list head to link elements
  * @refcnt:	count of iscsi entities using it
@@ -196,7 +199,7 @@ struct cxgbei_ulp2_pagepod_hdr;
 struct cxgbei_ulp2_ddp_info {
 	SLIST_ENTRY(cxgbei_ulp2_ddp_info)      cxgbei_ulp2_ddp_list;
 	volatile int refcnt;
-	void *tdev;	/* could be t3cdev or t4cdev */
+	void *tdev;	/* t5odev */
 	unsigned int max_txsz;
 	unsigned int max_rxsz;
 	unsigned int llimit;
@@ -225,7 +228,8 @@ struct cxgbei_ulp2_ddp_info {
 	bus_dmamap_t ulp_ddp_map;
 	struct cxgbei_ulp2_gather_list **gl_map;
 };
-static inline uint32_t cxgbei_ulp2_ddp_tag_base(unsigned int idx, struct cxgbei_ulp2_ddp_info *ddp, 
+static inline uint32_t
+cxgbei_ulp2_ddp_tag_base(unsigned int idx, struct cxgbei_ulp2_ddp_info *ddp, 
 			struct cxgbei_ulp2_tag_format *tformat, uint32_t sw_tag)
 {
 	//ddp->colors[idx]++;
@@ -247,7 +251,6 @@ static inline uint32_t cxgbei_ulp2_ddp_tag_base(unsigned int idx, struct cxgbei_
  */
 #define cxgbei_align_pdu_size(n) do { n = (n) & (~511); } while (0)
 
-#define ULP2_DFLT_PKT_SIZE	8192
 #define ULP2_MAX_PKT_SIZE	16224
 #define ULP2_MAX_PDU_PAYLOAD	(ULP2_MAX_PKT_SIZE - ISCSI_PDU_NONPAYLOAD_LEN)
 #define IPPOD_PAGES_MAX		4
@@ -311,7 +314,8 @@ extern unsigned char page_idx;
  * large memory chunk allocation/release
  * use vmalloc() if kmalloc() fails
  */
-static inline void *cxgbei_ulp2_alloc_big_mem(unsigned int size)
+static inline void *
+cxgbei_ulp2_alloc_big_mem(unsigned int size)
 {
 	void *p = NULL;
 
@@ -320,41 +324,42 @@ static inline void *cxgbei_ulp2_alloc_big_mem(unsigned int size)
 	return p;
 }
 
-static inline void cxgbei_ulp2_free_big_mem(void *addr)
+static inline void
+cxgbei_ulp2_free_big_mem(void *addr)
 {
 	free(addr, M_TEMP);
 }
-int cxgbei_ulp2_ddp_tag_reserve(struct cxgbei_ulp2_ddp_info *ddp,
-				void *isock, unsigned int tid,
-				struct cxgbei_ulp2_tag_format *, uint32_t *tag,
-				struct cxgbei_ulp2_gather_list *, int gfp, int reply);
-void cxgbei_ulp2_ddp_tag_release(struct cxgbei_ulp2_ddp_info *ddp, uint32_t tag, iscsi_socket *isock);
+int cxgbei_ulp2_ddp_tag_reserve(struct cxgbei_ulp2_ddp_info *,
+			void *, unsigned int ,
+			struct cxgbei_ulp2_tag_format *, uint32_t *,
+			struct cxgbei_ulp2_gather_list *, int , int );
+void cxgbei_ulp2_ddp_tag_release(struct cxgbei_ulp2_ddp_info *,
+			uint32_t, iscsi_socket *);
 
-struct cxgbei_ulp2_gather_list *cxgbei_ulp2_ddp_make_gl(unsigned int xferlen,
-				struct sglist *sgl,
-				unsigned int sgcnt,
-				struct pci_conf *pdev,
-				int gfp);
+struct cxgbei_ulp2_gather_list *cxgbei_ulp2_ddp_make_gl(unsigned int ,
+				struct sglist *,
+				unsigned int ,
+				struct pci_conf *,
+				int);
 
 struct cxgbei_ulp2_gather_list *cxgbei_ulp2_ddp_make_gl_from_iscsi_sgvec(
-				unsigned int xferlen,
-				cxgbei_sgl_t *sgl,
-				unsigned int sgcnt,
-				void *tdev,
-				int gfp);
+				unsigned int,
+				cxgbei_sgl_t *,
+				unsigned int,
+				void *,
+				int);
 
-void cxgbei_ulp2_ddp_release_gl(struct cxgbei_ulp2_gather_list *gl,
-				void *tdev);
+void cxgbei_ulp2_ddp_release_gl(struct cxgbei_ulp2_gather_list *, void *);
 
-int cxgbei_ulp2_ddp_find_page_index(unsigned long pgsz);
-int cxgbei_ulp2_adapter_ddp_info(struct cxgbei_ulp2_ddp_info *ddp,
+int cxgbei_ulp2_ddp_find_page_index(unsigned long);
+int cxgbei_ulp2_adapter_ddp_info(struct cxgbei_ulp2_ddp_info *,
 				struct cxgbei_ulp2_tag_format *,
-				unsigned int *txsz, unsigned int *rxsz);
+				unsigned int *, unsigned int *);
 
-void cxgbei_ulp2_ddp_cleanup(struct cxgbei_ulp2_ddp_info **ddp_pp);
-void cxgbei_ulp2_ddp_init(void *tdev,
-			struct cxgbei_ulp2_ddp_info **ddp_pp,
-			struct ulp_iscsi_info *uinfo);
+void cxgbei_ulp2_ddp_cleanup(struct cxgbei_ulp2_ddp_info **);
+void cxgbei_ulp2_ddp_init(void *,
+			struct cxgbei_ulp2_ddp_info **,
+			struct ulp_iscsi_info *);
 int cxgbei_ulp2_init(void);
 void cxgbei_ulp2_exit(void);
 #endif

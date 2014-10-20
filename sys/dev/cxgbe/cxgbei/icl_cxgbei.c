@@ -1547,7 +1547,7 @@ static int
 icl_cxgbei_limits(size_t *limitp)
 {
 
-	*limitp = ULP2_DFLT_PKT_SIZE;
+	*limitp = 8 * 1024;
 
 	return (0);
 }
@@ -1612,7 +1612,6 @@ int icl_cxgbei_unload(void)
 	return (0);
 }
 
-#if 1
 static int
 icl_cxgbei_modevent(module_t mod, int what, void *arg)
 {
@@ -1636,4 +1635,3 @@ moduledata_t icl_cxgbei_data = {
 DECLARE_MODULE(icl_cxgbei, icl_cxgbei_data, SI_SUB_DRIVERS, SI_ORDER_MIDDLE);
 MODULE_DEPEND(icl_cxgbei, icl, 1, 1, 1);
 MODULE_VERSION(icl_cxgbei, 1);
-#endif

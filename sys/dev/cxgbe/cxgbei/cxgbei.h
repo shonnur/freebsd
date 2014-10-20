@@ -26,9 +26,9 @@ typedef struct iscsi_socket {
         void            *s_private;     /* underlying socket related info. */
         void            *s_conn;	/* ic_conn pointer */
 	struct socket	*sock;
-        struct mbuf_head iscsi_rcv_mbufq;/* Ingress direction - ULP stores mbufs */
-        struct mbuf_head ulp2_writeq;	/* Ingress direction - ULP stores mbufs */
-        struct mbuf_head ulp2_wrq;	/* Ingress direction - ULP stores mbufs */
+        struct mbuf_head iscsi_rcv_mbufq;/* rx - ULP mbufs */
+        struct mbuf_head ulp2_writeq;	 /* tx - ULP mbufs */
+        struct mbuf_head ulp2_wrq;	 /* tx wr- ULP mbufs */
 
 	struct mbuf *mbuf_ulp_lhdr;
 	struct mbuf *mbuf_ulp_ldata;
@@ -115,9 +115,9 @@ static MALLOC_DEFINE(M_CXGBEI, "cxgbei", "Chelsio iSCSI offload driver");
 
 /* Flags for return value of CPL message handlers */
 enum {
-        CPL_RET_BUF_DONE = 1,   // buffer processing done, buffer may be freed
-        CPL_RET_BAD_MSG = 2,    // bad CPL message (e.g., unknown opcode)
-        CPL_RET_UNKNOWN_TID = 4 // unexpected unknown TID
+	CPL_RET_BUF_DONE = 1,	/* buffer processing done buffer may be freed */
+	CPL_RET_BAD_MSG = 2,	/* bad CPL message (e.g., unknown opcode) */
+	CPL_RET_UNKNOWN_TID = 4	/* unexpected unknown TID */
 };
 
 
@@ -131,8 +131,8 @@ struct ulp_mbuf_cb {
         uint32_t seq;                        /* TCP sequence number */
         union { /* ULP-specific fields */
                 struct {
-                        uint32_t ddigest;    /* ULP rx_data_ddp selected field */
-                        uint32_t pdulen;     /* ULP rx_data_ddp selected field */
+                        uint32_t ddigest;    /* ULP rx_data_ddp selected field*/
+                        uint32_t pdulen;     /* ULP rx_data_ddp selected field*/
                 } iscsi;
                 struct {
                         uint32_t offset;     /* ULP DDP offset notification */
@@ -170,12 +170,10 @@ enum {
 #define ODEV_FLAG_ULP_ENABLED   \
         (ODEV_FLAG_ULP_CRC_ENABLED | ODEV_FLAG_ULP_DDP_ENABLED)
 
-int cxgbei_conn_set_ulp_mode(struct socket *so, void *conn);
-int cxgbei_conn_close(struct socket *so);
-void cxgbei_conn_task_reserve_itt(void *conn, void **prv, void *scmd,
-			unsigned int *itt);
-void cxgbei_conn_transfer_reserve_ttt(void *conn, void **prv,
-			void *scmd, unsigned int *ttt);
-void cxgbei_cleanup_task(void *conn, void *ofld_priv);
-int cxgbei_conn_xmit_pdu(void *conn, void *ioreq);
+int cxgbei_conn_set_ulp_mode(struct socket *, void *);
+int cxgbei_conn_close(struct socket *);
+void cxgbei_conn_task_reserve_itt(void *, void **, void *, unsigned int *);
+void cxgbei_conn_transfer_reserve_ttt(void *, void **, void *, unsigned int *);
+void cxgbei_cleanup_task(void *, void *);
+int cxgbei_conn_xmit_pdu(void *, void *);
 #endif

@@ -28,6 +28,7 @@
 #include "cxgbei.h"
 
 #include "cxgbei_ulp2_ddp.h"
+
 #include <cam/scsi/scsi_all.h>
 #include <cam/scsi/scsi_da.h>
 #include <cam/ctl/ctl_io.h>
@@ -60,15 +61,15 @@
 #include <cam/scsi/scsi_message.h>
 
 /* forward declarations */
-struct icl_pdu * icl_conn_new_empty_pdu(struct icl_conn *ic, int flags);
-void icl_pdu_free(struct icl_pdu *ip);
+struct icl_pdu * icl_conn_new_empty_pdu(struct icl_conn *, int );
+void icl_pdu_free(struct icl_pdu *);
 
 /* debug prints */
 #define cxgbei_log_error(fmt...) printf("cxgbei: ERR! " fmt)
 #define cxgbei_log_warn(fmt...)  printf("cxgbei: WARN! " fmt)
 #define cxgbei_log_info(fmt...)  printf("cxgbei: " fmt)
 
-//#define __DEBUG_CXGBI__
+/* #define __DEBUG_CXGBI__ */
 #ifdef __DEBUG_CXGBI__
 #define cxgbei_log_debug(fmt, args...) \
 	printf("cxgbei: %s - " fmt, __func__ , ## args)
@@ -118,15 +119,17 @@ static struct ulp_mbuf_cb * find_ulp_mbuf_cb(struct mbuf *m)
 /*
  * functions to program the pagepod in h/w
  */
-static void* t4_tdev2ddp(void *tdev)
+static void *
+t4_tdev2ddp(void *tdev)
 {
 	struct adapter *sc = ((struct toedev *)tdev)->tod_softc;
 	return (sc->iscsi_softc);
 }
-static void inline ppod_set(struct pagepod *ppod,
-			struct cxgbei_ulp2_pagepod_hdr *hdr,
-			struct cxgbei_ulp2_gather_list *gl,
-			unsigned int pidx)
+static void inline
+ppod_set(struct pagepod *ppod,
+	struct cxgbei_ulp2_pagepod_hdr *hdr,
+	struct cxgbei_ulp2_gather_list *gl,
+	unsigned int pidx)
 {
 	int i;
 
@@ -138,14 +141,16 @@ static void inline ppod_set(struct pagepod *ppod,
 	}
 }
 
-static void inline ppod_clear(struct pagepod *ppod)
+static void inline
+ppod_clear(struct pagepod *ppod)
 {
 	memset(ppod, 0, sizeof(*ppod));
 }
 
-static inline void ulp_mem_io_set_hdr(struct adapter *sc, int tid, struct ulp_mem_io *req,
-				unsigned int wr_len, unsigned int dlen,
-				unsigned int pm_addr)
+static inline void
+ulp_mem_io_set_hdr(struct adapter *sc, int tid, struct ulp_mem_io *req,
+		unsigned int wr_len, unsigned int dlen,
+		unsigned int pm_addr)
 {
 	struct ulptx_idata *idata = (struct ulptx_idata *)(req + 1);
 
@@ -166,7 +171,8 @@ static inline void ulp_mem_io_set_hdr(struct adapter *sc, int tid, struct ulp_me
 #define ULPMEM_IDATA_MAX_NPPODS 1	/* 256/PPOD_SIZE */
 #define PCIE_MEMWIN_MAX_NPPODS 16	/* 1024/PPOD_SIZE */
 
-static int ppod_write_idata(struct cxgbei_ulp2_ddp_info *ddp,
+static int
+ppod_write_idata(struct cxgbei_ulp2_ddp_info *ddp,
 			struct cxgbei_ulp2_pagepod_hdr *hdr,
 			unsigned int idx, unsigned int npods,
 			struct cxgbei_ulp2_gather_list *gl,
@@ -206,7 +212,8 @@ static int ppod_write_idata(struct cxgbei_ulp2_ddp_info *ddp,
 	return 0;
 }
 
-static int t4_ddp_set_map(struct cxgbei_ulp2_ddp_info *ddp,
+static int
+t4_ddp_set_map(struct cxgbei_ulp2_ddp_info *ddp,
 			void *isockp, struct cxgbei_ulp2_pagepod_hdr *hdr,
 			unsigned int idx, unsigned int npods,
 			struct cxgbei_ulp2_gather_list *gl, int reply)
@@ -218,7 +225,7 @@ static int t4_ddp_set_map(struct cxgbei_ulp2_ddp_info *ddp,
 	int err = -1;
 	unsigned int pidx = 0, w_npods = 0, cnt;
 
-	if (!isock) {
+	if (isock == NULL) {
 		cxgbei_log_error("%s: isock NULL.\n", __func__);
 		return err;
 	}
@@ -243,14 +250,15 @@ static int t4_ddp_set_map(struct cxgbei_ulp2_ddp_info *ddp,
 		err = ppod_write_idata(ddp, hdr, idx, cnt, gl,
 					pidx, toep);
 		if (err < 0) {
-			cxgbei_log_error("%s ppod_write_idata failed\n", __func__);
+			cxgbei_log_error("ppod_write_idata failed\n");
 			break;
 		}
 	}
 	return err;
 }
 
-static void t4_ddp_clear_map(struct cxgbei_ulp2_ddp_info *ddp,
+static void
+t4_ddp_clear_map(struct cxgbei_ulp2_ddp_info *ddp,
 			struct cxgbei_ulp2_gather_list *gl,
 			unsigned int tag, unsigned int idx, unsigned int npods,
 			iscsi_socket *isock)
@@ -305,7 +313,8 @@ typedef struct offload_device {
 LIST_HEAD(, offload_device) odev_list = LIST_HEAD_INITIALIZER(head);
 
 static void t4_unregister_cpl_handler_with_tom(struct adapter *sc);
-static offload_device *offload_device_new(void *tdev)
+static offload_device *
+offload_device_new(void *tdev)
 {
 	offload_device *odev = NULL;
 	odev = malloc(sizeof(struct offload_device),
@@ -318,11 +327,12 @@ static offload_device *offload_device_new(void *tdev)
 	return odev;
 }
 
-static offload_device *offload_device_find(struct toedev *tdev)
+static offload_device *
+offload_device_find(struct toedev *tdev)
 {
 	offload_device *odev = NULL;
 
-	if(!LIST_EMPTY(&odev_list)) {
+	if (!LIST_EMPTY(&odev_list)) {
 		LIST_FOREACH(odev, &odev_list, link) {
 		if (odev->d_tdev == tdev)
 			break;
@@ -331,7 +341,8 @@ static offload_device *offload_device_find(struct toedev *tdev)
 	return odev;
 }
 
-static void cxgbei_odev_cleanup(offload_device *odev)
+static void
+cxgbei_odev_cleanup(offload_device *odev)
 {
 	struct toedev *tdev = odev->d_tdev;
 	struct adapter *sc = (struct adapter *)tdev->tod_softc;
@@ -340,16 +351,18 @@ static void cxgbei_odev_cleanup(offload_device *odev)
 	t4_unregister_cpl_handler_with_tom(sc);
 	if (odev->d_flag & ODEV_FLAG_ULP_DDP_ENABLED) {
 		if (sc->iscsi_softc)
-			cxgbei_ulp2_ddp_cleanup((struct cxgbei_ulp2_ddp_info **)&sc->iscsi_softc);
+			cxgbei_ulp2_ddp_cleanup(
+			(struct cxgbei_ulp2_ddp_info **)&sc->iscsi_softc);
 	}
 	return;
 }
 
-static void offload_device_remove()
+static void
+offload_device_remove()
 {
 	offload_device *odev = NULL;
 
-	if(LIST_EMPTY(&odev_list))
+	if (LIST_EMPTY(&odev_list))
 		return;
 
 	LIST_FOREACH(odev, &odev_list, link) {
@@ -360,14 +373,16 @@ static void offload_device_remove()
 	return;
 }
 
-static int cxgbei_map_sg(cxgbei_sgl_t *sgl, struct ccb_scsiio *csio)
+static int
+cxgbei_map_sg(cxgbei_sgl_t *sgl, struct ccb_scsiio *csio)
 {
 	unsigned int data_len = csio->dxfer_len;
 	unsigned int sgoffset = (uint64_t)csio->data_ptr & PAGE_MASK;
-	unsigned int nsge = (csio->dxfer_len + sgoffset + PAGE_SIZE - 1) >> PAGE_SHIFT;
+	unsigned int nsge;
 	unsigned char *sgaddr = csio->data_ptr;
 	unsigned int len = 0;
 
+	nsge = (csio->dxfer_len + sgoffset + PAGE_SIZE - 1) >> PAGE_SHIFT;
 	sgl->sg_addr = sgaddr;
 	sgl->sg_offset = sgoffset;
 	if (data_len <  (PAGE_SIZE - sgoffset))
@@ -381,7 +396,7 @@ static int cxgbei_map_sg(cxgbei_sgl_t *sgl, struct ccb_scsiio *csio)
 	sgaddr += len;
 	sgl = sgl+1;
 	
-	while(data_len > 0) {
+	while (data_len > 0) {
 		sgl->sg_addr = sgaddr;
 		len = (data_len < PAGE_SIZE)? data_len: PAGE_SIZE;
 		sgl->sg_length = len;
@@ -393,7 +408,8 @@ static int cxgbei_map_sg(cxgbei_sgl_t *sgl, struct ccb_scsiio *csio)
 	return nsge;
 }
 
-static int cxgbei_map_sg_tgt(cxgbei_sgl_t *sgl, union ctl_io *io)
+static int
+cxgbei_map_sg_tgt(cxgbei_sgl_t *sgl, union ctl_io *io)
 {
         unsigned int data_len, sgoffset, nsge;
         unsigned char *sgaddr;
@@ -429,7 +445,7 @@ static int cxgbei_map_sg_tgt(cxgbei_sgl_t *sgl, union ctl_io *io)
         for (i = 0;  i< ctl_sg_count; i++)
                 len += ctl_sglist[i].len;
         nsge = (len + sgoffset + PAGE_SIZE -1) >> PAGE_SHIFT;
-        while(data_len > 0) {
+        while (data_len > 0) {
                 sgl->sg_addr = sgaddr;
                 len = (data_len < PAGE_SIZE)? data_len: PAGE_SIZE;
                 sgl->sg_length = len;
@@ -448,7 +464,8 @@ static int cxgbei_map_sg_tgt(cxgbei_sgl_t *sgl, union ctl_io *io)
         return nsge;
 }
 
-static int t4_sk_ddp_tag_reserve(iscsi_socket *isock, unsigned int xferlen,
+static int
+t4_sk_ddp_tag_reserve(iscsi_socket *isock, unsigned int xferlen,
                                 cxgbei_sgl_t *sgl, unsigned int sgcnt,
                                 unsigned int *ddp_tag)
 {
@@ -460,7 +477,7 @@ static int t4_sk_ddp_tag_reserve(iscsi_socket *isock, unsigned int xferlen,
 	struct cxgbei_ulp2_ddp_info *ddp;
 
         ddp = (struct cxgbei_ulp2_ddp_info *)sc->iscsi_softc;
-        if (!ddp)
+        if (ddp == NULL)
                 return -ENOMEM;
 
         gl = cxgbei_ulp2_ddp_make_gl_from_iscsi_sgvec(xferlen, sgl, sgcnt,
@@ -473,7 +490,7 @@ static int t4_sk_ddp_tag_reserve(iscsi_socket *isock, unsigned int xferlen,
                                                 ddp_tag, gl,
                                                 0, 0);
                 if (err < 0) {
-			cxgbei_log_error("%s: ddp_tag_reserve failed\n", __func__);
+			cxgbei_log_error("ddp_tag_reserve failed\n");
                         cxgbei_ulp2_ddp_release_gl(gl, odev->d_tdev);
 		}
         }
@@ -494,13 +511,12 @@ cxgbei_task_reserve_itt(struct icl_conn *ic, void **prv,
         offload_device *odev = isock->s_odev;
 
 	tdata = (cxgbei_task_data *)*prv;
-	if (!xferlen || !tdata) {
+	if (!xferlen || (tdata == NULL)) {
 		goto out;
 	}
 	if (xferlen < DDP_THRESHOLD)
 		goto out;
 
-	/**/
 	if ((scmd->ccb_h.flags & CAM_DIR_MASK) == CAM_DIR_IN) {
 		tdata->nsge = cxgbei_map_sg(tdata->sgl, scmd);
 		if (tdata->nsge == 0) {
@@ -511,7 +527,8 @@ cxgbei_task_reserve_itt(struct icl_conn *ic, void **prv,
 
 		tdata->sc_ddp_tag = *itt;
 
-		//printf("*itt:0x%x sc_ddp_tag:0x%x\n", *itt, tdata->sc_ddp_tag);
+		cxgbei_log_debug("*itt:0x%x sc_ddp_tag:0x%x\n",
+				*itt, tdata->sc_ddp_tag);
 		if (cxgbei_ulp2_sw_tag_usable(&odev->d_tag_format,
 							tdata->sc_ddp_tag)) {
 			err = t4_sk_ddp_tag_reserve(isock, scmd->dxfer_len, sge,
@@ -542,7 +559,7 @@ cxgbei_task_reserve_ttt(struct icl_conn *ic, void **prv, union ctl_io *io,
 
 	xferlen = (io->scsiio.kern_data_len - io->scsiio.ext_data_filled);
 	tdata = (cxgbei_task_data *)*prv;
-	if (!xferlen || !tdata)
+	if (!xferlen || (tdata == NULL))
 		goto out;
 	if (xferlen < DDP_THRESHOLD)
 		goto out;
@@ -568,7 +585,8 @@ out:
 	return tdata->sc_ddp_tag;
 }
 
-static int t4_sk_ddp_tag_release(iscsi_socket *isock, unsigned int ddp_tag)
+static int
+t4_sk_ddp_tag_release(iscsi_socket *isock, unsigned int ddp_tag)
 {
         offload_device *odev = isock->s_odev;
         struct toedev *tdev = odev->d_tdev;
@@ -577,8 +595,8 @@ static int t4_sk_ddp_tag_release(iscsi_socket *isock, unsigned int ddp_tag)
         return 0;
 }
 #ifdef T4_DDP
-static struct cxgbei_ulp2_ddp_info* t4_ddp_init(struct ifnet *dev,
-						struct toedev *tdev)
+static struct cxgbei_ulp2_ddp_info *
+t4_ddp_init(struct ifnet *dev, struct toedev *tdev)
 {
 	struct cxgbei_ulp2_ddp_info *ddp;
 	struct adapter *sc = tdev->tod_softc;
@@ -594,7 +612,7 @@ static struct cxgbei_ulp2_ddp_info* t4_ddp_init(struct ifnet *dev,
 		cxgbei_log_error("iSCSI capabilities not enabled.\n");
 		return NULL;
 	}
-	cxgbei_log_info("T4, ddp 0x%x ~ 0x%x, size %u, iolen %u, tdev->ulp ddp:0x%p.\n",
+	cxgbei_log_info("T4, ddp 0x%x ~ 0x%x, size %u, iolen %u, ulpddp:0x%p\n",
 		uinfo.llimit, uinfo.ulimit, sc->vres.iscsi.size,
 		uinfo.max_rxsz, sc->iscsi_softc);
 
@@ -618,24 +636,23 @@ static struct cxgbei_ulp2_ddp_info* t4_ddp_init(struct ifnet *dev,
 }
 #endif
 
-//static struct socket * cpl_find_sock(struct adapter *sc, struct mbuf *m)
-static struct socket * cpl_find_sock(struct adapter *sc,  unsigned int hwtid)
+static struct socket *
+cpl_find_sock(struct adapter *sc,  unsigned int hwtid)
 {
         struct socket *sk;
-//	struct cpl_iscsi_hdr *cpl =  mtod(m, struct cpl_iscsi_hdr *);
-//      unsigned int hwtid = GET_TID(cpl);
         struct toepcb *toep = lookup_tid(sc, hwtid);
         struct inpcb *inp = toep->inp;
 
         INP_WLOCK(inp);
 	sk = inp->inp_socket;
         INP_WUNLOCK(inp);
-        if (!sk)
+        if (sk == NULL)
                 cxgbei_log_error("T4 CPL tid 0x%x, sk NULL.\n", hwtid);
         return sk;
 }
 
-static void process_rx_iscsi_hdr(struct socket *sk, struct mbuf *m)
+static void
+process_rx_iscsi_hdr(struct socket *sk, struct mbuf *m)
 {
         struct tcpcb *tp = so_sototcpcb(sk);
         struct toepcb *toep = tp->t_toe;
@@ -648,13 +665,13 @@ static void process_rx_iscsi_hdr(struct socket *sk, struct mbuf *m)
         iscsi_socket *isock = (iscsi_socket *)(sk)->so_emuldata;
 	unsigned int hlen, dlen, plen;
 
-        if (!isock)
+        if (isock == NULL)
                 goto err_out;
 
-        if(!toep)
+        if (toep == NULL)
                 goto err_out;
 	if ((m->m_flags & M_PKTHDR) == 0) {
-		cxgbei_log_error("m:%p doesn't have a M_PKTHDR can't allocate m_tag\n", m);
+		cxgbei_log_error("m:%p no M_PKTHDR can't allocate m_tag\n", m);
                 goto err_out;
         }
 
@@ -683,9 +700,8 @@ static void process_rx_iscsi_hdr(struct socket *sk, struct mbuf *m)
                 /* we only update tp->rcv_nxt once per pdu */
                 if (cb->seq != tp->rcv_nxt) {
                         cxgbei_log_warn(
-                                "tid 0x%x, CPL_ISCSI_HDR, BAD seq got 0x%x exp 0x%x.\n",
-                                toep->tid,
-                                cb->seq, tp->rcv_nxt);
+			"tid 0x%x, CPL_ISCSI_HDR, BAD seq got 0x%x exp 0x%x.\n",
+				toep->tid, cb->seq, tp->rcv_nxt);
 				//mtx_unlock(&isock->iscsi_rcv_mbufq.lock);
                         goto err_out1;
                 }
@@ -738,8 +754,9 @@ err_out:
         return;
 }
 
-/* handover received PDU to iscsi_initiator */
-static void iscsi_conn_receive_pdu(struct iscsi_socket *isock)
+/* hand over received PDU to iscsi_initiator */
+static void
+iscsi_conn_receive_pdu(struct iscsi_socket *isock)
 {
 	struct icl_pdu *response = NULL;
 	struct icl_conn *ic = (struct icl_conn*)isock->s_conn;
@@ -775,7 +792,7 @@ static void iscsi_conn_receive_pdu(struct iscsi_socket *isock)
 	/* data */
 	if (cb->flags & SBUF_ULP_FLAG_DATA_RCVD) {
 		m = mbufq_peek(&isock->iscsi_rcv_mbufq);
-		if (!m) {
+		if (m == NULL) {
 			cxgbei_log_error("%s:No Data\n", __func__);
 			goto err_out;
 		}
@@ -796,8 +813,8 @@ err_out:
 	return;
 }
 
-//static void process_rx_data_ddp(struct socket *sk, struct mbuf *m)
-static void process_rx_data_ddp(struct socket *sk, void *m)
+static void
+process_rx_data_ddp(struct socket *sk, void *m)
 {
         struct cpl_rx_data_ddp *cpl = (struct cpl_rx_data_ddp *)m;
         struct tcpcb *tp = so_sototcpcb(sk);
@@ -811,7 +828,7 @@ static void process_rx_data_ddp(struct socket *sk, void *m)
 	if (!isock->mbuf_ulp_lhdr) {
                 cxgbei_log_error("tid 0x%x, rcv RX_DATA_DDP w/o pdu header.\n",
                         toep->tid);
-		goto out;
+		return;
         }
 	mtx_lock(&isock->iscsi_rcv_mbufq.lock);
 	//SOCK_LOCK(sk);
@@ -821,20 +838,20 @@ static void process_rx_data_ddp(struct socket *sk, void *m)
                 lcb1->flags |= SBUF_ULP_FLAG_STATUS_RCVD;
         }
         lcb = find_ulp_mbuf_cb(isock->mbuf_ulp_lhdr);
-        if (!lcb) {
+        if (lcb == NULL) {
                 cxgbei_log_error("mtag NULL lmbuf :%p\n", lmbuf);
 		mtx_unlock(&isock->iscsi_rcv_mbufq.lock);
 		//SOCK_UNLOCK(sk);
-		goto out;
+		return;
         }
         lcb->flags |= SBUF_ULP_FLAG_STATUS_RCVD;
         isock->mbuf_ulp_lhdr = NULL;
 
-	 if (ntohs(cpl->len) != lcb->ulp.iscsi.pdulen) {
-                cxgbei_log_error("tid 0x%x, RX_DATA_DDP pdulen %u != %u.\n",
-                        toep->tid, ntohs(cpl->len), lcb->ulp.iscsi.pdulen);
-                cxgbei_log_error("%s: lmbuf:%p lcb:%p lcb->flags:0x%x\n",
-					__func__, lmbuf, lcb, lcb->flags);
+	if (ntohs(cpl->len) != lcb->ulp.iscsi.pdulen) {
+		cxgbei_log_error("tid 0x%x, RX_DATA_DDP pdulen %u != %u.\n",
+			toep->tid, ntohs(cpl->len), lcb->ulp.iscsi.pdulen);
+		cxgbei_log_error("%s: lmbuf:%p lcb:%p lcb->flags:0x%x\n",
+			__func__, lmbuf, lcb, lcb->flags);
         }
 
         lcb->ulp.iscsi.ddigest = ntohl(cpl->ulp_crc);
@@ -858,21 +875,22 @@ static void process_rx_data_ddp(struct socket *sk, void *m)
                 unsigned int ttt = ntohl(*(unsigned int *)(bhs + 20));
                 unsigned int offset = ntohl(*(unsigned int *)(bhs + 40));
 
-                if (dlen >= 2096) 
-		{
+                if (dlen >= 2096) {
                 /* data_out and should be ddp'ed */
-                if ((opcode & 0x3F) == 0x05 && ttt != 0xFFFFFFFF) {
-                        printf("CPL_RX_DATA_DDP: tid 0x%x, data-out %s ddp'ed (%u+%u), ttt 0x%x, seq 0x%x, ddpvld 0x%x.\n",
-                        toep->tid,
-                        (lcb->flags & SBUF_ULP_FLAG_DATA_DDPED) ? "IS" : "NOT",
-                        offset, dlen, ttt, ntohl(cpl->seq), ntohl(cpl->ddpvld));
+       	        if ((opcode & 0x3F) == 0x05 && ttt != 0xFFFFFFFF) {
+			printf("CPL_RX_DATA_DDP: tid 0x%x, data-out %s ddp'ed\
+			(%u+%u), ttt 0x%x, seq 0x%x, ddpvld 0x%x.\n",
+			toep->tid,
+			(lcb->flags & SBUF_ULP_FLAG_DATA_DDPED) ? "IS" : "NOT",
+			offset, dlen, ttt, ntohl(cpl->seq), ntohl(cpl->ddpvld));
                 }
                 if ((opcode & 0x3F) == 0x25) {
-                        //if (!(lcb->flags & SBUF_ULP_FLAG_DATA_DDPED))
-                        printf("CPL_RX_DATA_DDP: tid 0x%x, data-in %s ddp'ed (%u+%u), seq 0x%x, ddpvld 0x%x.\n",
-                        toep->tid,
-                        (lcb->flags & SBUF_ULP_FLAG_DATA_DDPED) ? "IS" : "NOT",
-                        offset, dlen, ntohl(cpl->seq), ntohl(cpl->ddpvld));
+			//if (!(lcb->flags & SBUF_ULP_FLAG_DATA_DDPED))
+			printf("CPL_RX_DATA_DDP: tid 0x%x, data-in %s ddp'ed\
+			(%u+%u), seq 0x%x, ddpvld 0x%x.\n",
+			toep->tid,
+			(lcb->flags & SBUF_ULP_FLAG_DATA_DDPED) ? "IS" : "NOT",
+			offset, dlen, ntohl(cpl->seq), ntohl(cpl->ddpvld));
                 }
                 }
         }
@@ -892,8 +910,6 @@ static void process_rx_data_ddp(struct socket *sk, void *m)
 	t4_rcvd(&toep->td->tod, tp);
 	INP_WUNLOCK(inp);
 	//mtx_unlock(&isock->iscsi_rcv_mbufq.lock);
-out:
-	//m_freem(m);
 	return;
 }
 
@@ -905,13 +921,13 @@ drop_fw_acked_ulp_data(struct socket *sk, struct toepcb *toep, int len)
         iscsi_socket *isock = (iscsi_socket *)(sk)->so_emuldata;
 	struct icl_pdu *req;
 
-        if(len == 0 || !isock)
+        if (len == 0 || (isock == NULL))
                 return;
 
         mtx_lock(&isock->ulp2_wrq.lock);
-        while(len > 0) {
+        while (len > 0) {
                 m = mbufq_dequeue(&isock->ulp2_wrq);
-                if(!m) break;
+                if(m == NULL) break;
 
                 for(next = m; next !=NULL; next = next->m_next)
                         len -= next->m_len;
@@ -929,7 +945,8 @@ drop_fw_acked_ulp_data(struct socket *sk, struct toepcb *toep, int len)
         return;
 }
 
-static void process_fw4_ack(struct socket *sk, int *plen)
+static void
+process_fw4_ack(struct socket *sk, int *plen)
 {
 	struct tcpcb *tp = so_sototcpcb(sk);
 	struct toepcb *toep = tp->t_toe;
@@ -939,63 +956,59 @@ static void process_fw4_ack(struct socket *sk, int *plen)
         return;
 }
 
-static int do_set_tcb_rpl(struct sge_iq *iq, const struct rss_header *rss, struct mbuf *m)
+static int
+do_set_tcb_rpl(struct sge_iq *iq, const struct rss_header *rss, struct mbuf *m)
 {
 	return 0;
 }
 
-static int do_rx_iscsi_hdr(struct sge_iq *iq, const struct rss_header *rss, struct mbuf *m)
+static int
+do_rx_iscsi_hdr(struct sge_iq *iq, const struct rss_header *rss, struct mbuf *m)
 {
 	struct socket *sk; 
 	struct adapter *sc = iq->adapter;
         struct cpl_iscsi_hdr *cpl =  mtod(m, struct cpl_iscsi_hdr *);
-	//sk = cpl_find_sock(sc, m);
 	sk = cpl_find_sock(sc, GET_TID(cpl));
 
-	if (!sk)
+	if (sk == NULL)
 		return CPL_RET_UNKNOWN_TID | CPL_RET_BUF_DONE;
 
 	process_rx_iscsi_hdr(sk, m);
 	return 0;
 }
 
-static int do_rx_data_ddp(struct sge_iq *iq, const struct rss_header *rss, struct mbuf *m)
+static int
+do_rx_data_ddp(struct sge_iq *iq, const struct rss_header *rss, struct mbuf *m)
 {
         return 0;
 }
 
-static int do_rx_iscsi_ddp(struct sge_iq *iq, const struct rss_header *rss, struct mbuf *m)
+static int
+do_rx_iscsi_ddp(struct sge_iq *iq, const struct rss_header *rss, struct mbuf *m)
 {
 	struct socket *sk;
 	struct adapter *sc;
 	const struct cpl_rx_iscsi_ddp *cpl = (const void *)(rss + 1);
 
-	if (!iq) {
+	if (iq == NULL) {
 		cxgbei_log_error("%s: iq is NULL",__func__);
 		return 0;
 	}
 	sc = iq->adapter;
-	if (!sc) {
+	if (sc == NULL) {
 		cxgbei_log_error("%s: sc is NULL",__func__);
 		return 0;
 	}
-#if 0
-	m = m_get(M_NOWAIT, MT_DATA);
-        if (m == NULL)
-                CXGBE_UNIMPLEMENTED("mbuf alloc failure");
-        memcpy(mtod(m, unsigned char *), cpl, sizeof(struct cpl_rx_iscsi_ddp));
-	//sk = cpl_find_sock(sc, m); 
-#endif
-	sk = cpl_find_sock(sc, GET_TID(cpl)); 
 
-	if (!sk)
+	sk = cpl_find_sock(sc, GET_TID(cpl)); 
+	if (sk == NULL)
 		return CPL_RET_UNKNOWN_TID | CPL_RET_BUF_DONE;
 
-	//process_rx_data_ddp(sk, m);
 	process_rx_data_ddp(sk, (void *)cpl);
 	return 0;
 }
-static int t4_ulp_mbuf_push(struct socket *so, struct mbuf *m)
+static int
+t4_ulp_mbuf_push(struct socket *so, struct mbuf *m)
 {
 	struct tcpcb *tp = so_sototcpcb(so);
 	struct toepcb *toep = tp->t_toe;
@@ -1016,20 +1029,19 @@ static int t4_ulp_mbuf_push(struct socket *so, struct mbuf *m)
         return 0;
 }
 
-static struct mbuf *iscsi_queue_handler_callback(struct socket *sk,
-                                        unsigned int cmd, int *qlen)
+static struct mbuf *
+iscsi_queue_handler_callback(struct socket *sk, unsigned int cmd, int *qlen)
 {
         iscsi_socket *isock;
         struct mbuf *m0 = NULL;
 
-        if (!sk)
+        if (sk == NULL)
                 return NULL;
         isock = (iscsi_socket *)(sk)->so_emuldata;
-
-        if (!isock)
+        if (isock == NULL)
                 return NULL;
 
-        switch(cmd) {
+        switch (cmd) {
                 case 0:/* PEEK */
 			//SOCKBUF_LOCK(&sk->so_snd);
                         m0 = mbufq_peek(&isock->ulp2_writeq);
@@ -1059,20 +1071,21 @@ static struct mbuf *iscsi_queue_handler_callback(struct socket *sk,
         return m0;
 }
 
-static void iscsi_cpl_handler_callback(struct tom_data *td, struct socket *sk,
+static void
+iscsi_cpl_handler_callback(struct tom_data *td, struct socket *sk,
                                         void *m, unsigned int op)
 {
         switch (op) {
         case CPL_ISCSI_HDR:
-                process_rx_iscsi_hdr(sk, m);
+		process_rx_iscsi_hdr(sk, m);
                 break;
         case CPL_RX_DATA_DDP:
-                process_rx_data_ddp(sk, m);
+		process_rx_data_ddp(sk, m);
                 break;
         case CPL_SET_TCB_RPL:
                 break;
         case CPL_FW4_ACK:
-                process_fw4_ack(sk, m);
+		process_fw4_ack(sk, m);
                 break;
         default:
                 cxgbei_log_error("sk 0x%p, op 0x%x from TOM, NOT supported.\n",
@@ -1081,26 +1094,22 @@ static void iscsi_cpl_handler_callback(struct tom_data *td, struct socket *sk,
         }
 }
 
-static void t4_register_cpl_handler_with_tom(struct adapter *sc)
+static void
+t4_register_cpl_handler_with_tom(struct adapter *sc)
 {
 	t4tom_register_cpl_iscsi_callback(iscsi_cpl_handler_callback);
 	t4tom_register_queue_iscsi_callback(iscsi_queue_handler_callback);
-	//if (!t4tom_cpl_handler_registered(sc, CPL_ISCSI_HDR)) {
-		t4_register_cpl_handler(sc, CPL_ISCSI_HDR, do_rx_iscsi_hdr);
-		t4_register_cpl_handler(sc, CPL_ISCSI_DATA, do_rx_iscsi_hdr);
-		t4tom_cpl_handler_register_flag |=
-			1 << TOM_CPL_ISCSI_HDR_REGISTERED_BIT;
-		//os_log_info("%s: register t4 cpl handler CPL_ISCSI_HDR.\n", __func__);
-//	} else 
-//		printf("t4 cpl handler: CPL_ISCSI_HDR already registered!\n");
+	t4_register_cpl_handler(sc, CPL_ISCSI_HDR, do_rx_iscsi_hdr);
+	t4_register_cpl_handler(sc, CPL_ISCSI_DATA, do_rx_iscsi_hdr);
+	t4tom_cpl_handler_register_flag |=
+		 1 << TOM_CPL_ISCSI_HDR_REGISTERED_BIT;
 
 	if (!t4tom_cpl_handler_registered(sc, CPL_SET_TCB_RPL)) {
 		t4_register_cpl_handler(sc, CPL_SET_TCB_RPL, do_set_tcb_rpl);
 		t4tom_cpl_handler_register_flag |=
 			1 << TOM_CPL_SET_TCB_RPL_REGISTERED_BIT;
 		printf("register t4 cpl handler CPL_SET_TCB_RPL.\n");
-	} else
-		printf("t4 cpl handler CPL_SET_TCB_RPL NOT registered.\n");
+	}
 
 	t4_register_cpl_handler(sc, CPL_RX_ISCSI_DDP, do_rx_iscsi_ddp);
 
@@ -1109,11 +1118,11 @@ static void t4_register_cpl_handler_with_tom(struct adapter *sc)
 		t4tom_cpl_handler_register_flag |=
 			1 << TOM_CPL_RX_DATA_DDP_REGISTERED_BIT;
 		printf("register t4 cpl handler CPL_RX_DATA_DDP.\n");
-	} else
-		printf("t4 cpl handler CPL_RX_DATA_DDP NOT registered.\n");
+	}
 }
 
-static void t4_unregister_cpl_handler_with_tom(struct adapter *sc)
+static void
+t4_unregister_cpl_handler_with_tom(struct adapter *sc)
 {
 	/* de-register CPL handles */
 	t4tom_register_cpl_iscsi_callback(NULL);
@@ -1132,8 +1141,8 @@ static void t4_unregister_cpl_handler_with_tom(struct adapter *sc)
 		t4_register_cpl_handler(sc, CPL_RX_DATA_DDP, NULL);
 }
 
-static
-int send_set_tcb_field(struct socket *sk, u16 word, u64 mask, u64 val,
+static int
+send_set_tcb_field(struct socket *sk, u16 word, u64 mask, u64 val,
                                 int no_reply)
 {
         struct wrqe *wr;
@@ -1158,7 +1167,8 @@ int send_set_tcb_field(struct socket *sk, u16 word, u64 mask, u64 val,
         return 0;
 }
 
-static int cxgbei_set_ulp_mode(struct socket *so, struct toepcb *toep,
+static int
+cxgbei_set_ulp_mode(struct socket *so, struct toepcb *toep,
 				unsigned char hcrc, unsigned char dcrc)
 {
 	int rv = 0, val = 0;
@@ -1174,7 +1184,8 @@ static int cxgbei_set_ulp_mode(struct socket *so, struct toepcb *toep,
 	return rv;
 }
 
-static offload_device *add_cxgbei_dev(struct ifnet *dev, struct toedev *tdev)
+static offload_device *
+add_cxgbei_dev(struct ifnet *dev, struct toedev *tdev)
 {
 #ifdef T4_DDP
         struct cxgbei_ulp2_ddp_info *ddp;
@@ -1208,20 +1219,25 @@ static offload_device *add_cxgbei_dev(struct ifnet *dev, struct toedev *tdev)
 }
 
 /* initiator */
-void cxgbei_conn_task_reserve_itt(void *conn, void **prv, void *scmd, unsigned int *itt)
+void
+cxgbei_conn_task_reserve_itt(void *conn, void **prv,
+				void *scmd, unsigned int *itt)
 {
 	*itt = htonl(cxgbei_task_reserve_itt(conn, prv, scmd, itt));
 	return;
 }
 
 /* target */
-void cxgbei_conn_transfer_reserve_ttt(void *conn, void **prv, void *scmd, unsigned int *ttt)
+void
+cxgbei_conn_transfer_reserve_ttt(void *conn, void **prv,
+				void *scmd, unsigned int *ttt)
 {
 	*ttt = htonl(cxgbei_task_reserve_ttt(conn, prv, scmd, ttt));
 	return;
 }
 
-void cxgbei_cleanup_task(void *conn, void *ofld_priv)
+void
+cxgbei_cleanup_task(void *conn, void *ofld_priv)
 {
 	struct icl_conn *ic = (struct icl_conn *)conn;
 	cxgbei_task_data *tdata = NULL;
@@ -1229,16 +1245,16 @@ void cxgbei_cleanup_task(void *conn, void *ofld_priv)
         iscsi_socket *isock = NULL;
         offload_device *odev = NULL;
 
-	if (!ic->ic_socket) return;
+	if (ic->ic_socket == NULL) return;
 
 	so = ic->ic_socket;
 
 	isock = (iscsi_socket *)(so)->so_emuldata;
-	if (!isock) return;
+	if (isock == NULL) return;
 	odev = isock->s_odev;
 
 	tdata = (cxgbei_task_data *)(ofld_priv);
-	if (!tdata) return;	
+	if (tdata == NULL) return;	
 	
 	if (cxgbei_ulp2_is_ddp_tag(&odev->d_tag_format, tdata->sc_ddp_tag))
 		t4_sk_ddp_tag_release(isock, tdata->sc_ddp_tag);
@@ -1246,14 +1262,15 @@ void cxgbei_cleanup_task(void *conn, void *ofld_priv)
 	//task->ofld_priv = NULL;
 	return;
 }
-static void t4_sk_tx_mbuf_setmode(struct icl_pdu *req, void *toep, void *mbuf,
-				unsigned char mode, unsigned char hcrc, unsigned char dcrc)
+static void
+t4_sk_tx_mbuf_setmode(struct icl_pdu *req, void *toep, void *mbuf,
+		unsigned char mode, unsigned char hcrc, unsigned char dcrc)
 {
 	struct mbuf *m = (struct mbuf *)mbuf;
 	struct ulp_mbuf_cb *cb;
 
 	cb = get_ulp_mbuf_cb(m);
-	if (!cb)
+	if (cb == NULL)
 		return;
 	cb->ulp_mode = ULP_MODE_ISCSI << 4;
 	if (hcrc)
@@ -1264,7 +1281,8 @@ static void t4_sk_tx_mbuf_setmode(struct icl_pdu *req, void *toep, void *mbuf,
 	return;
 }
 
-int cxgbei_conn_xmit_pdu(void *conn, void *ioreq)
+int
+cxgbei_conn_xmit_pdu(void *conn, void *ioreq)
 {
 	struct icl_conn *ic = (struct icl_conn *)conn;
 	struct icl_pdu *req = (struct icl_pdu *)ioreq;
@@ -1279,22 +1297,10 @@ int cxgbei_conn_xmit_pdu(void *conn, void *ioreq)
 	t4_ulp_mbuf_push(ic->ic_socket, m);
 	return 0;
 }
-#if 0
-uint32_t
-cxgbei_parse_pdu_tag(struct socket *so, uint32_t itt)
-{
-        offload_device *odev = NULL;
-        iscsi_socket *isock = (iscsi_socket *)(so)->so_emuldata;
-
-	if (!isock) return itt;
-
-	odev = isock->s_odev;
-	return cxgbei_ulp2_tag_nonrsvd_bits(&odev->d_tag_format, ntohl(itt));
-}
-#endif
 
 /* called from host iscsi, socket is passed as argument  */
-int cxgbei_conn_set_ulp_mode(struct socket *so, void *conn)
+int
+cxgbei_conn_set_ulp_mode(struct socket *so, void *conn)
 {
 	struct tcpcb *tp = so_sototcpcb(so);
 	struct toepcb *toep = tp->t_toe;
@@ -1306,11 +1312,10 @@ int cxgbei_conn_set_ulp_mode(struct socket *so, void *conn)
 	offload_device *odev = NULL;
 	struct icl_conn *ic = (struct icl_conn*)conn;
 
-	if (!toep) return -1;
+	if (toep == NULL) return -1;
 
 	ifp = toep->port->ifp;
-
-	if (!ifp) return -1;
+	if (ifp == NULL) return -1;
 
 	if (!(sototcpcb(so)->t_flags & TF_TOE) ||
                 !(ifp->if_capenable & IFCAP_TOE)) {
@@ -1327,14 +1332,14 @@ int cxgbei_conn_set_ulp_mode(struct socket *so, void *conn)
 	sc = toep->port->adapter;
 	tdev = &toep->td->tod;
 	/* if toe dev is not set, treat it as non-offloaded */
-	if (!tdev) {
+	if (tdev == NULL) {
 		cxgbei_log_error("T4 sk 0x%p, tdev NULL.\n", so);
 		return -1;
 	}
 
 	isock = (iscsi_socket *)malloc(sizeof(iscsi_socket), M_CXGBEI,
 				M_NOWAIT | M_ZERO);
-	if (!isock) {
+	if (isock == NULL) {
 		cxgbei_log_error("T4 sk 0x%p, isock alloc failed.\n", so);
 		return -1;
 	}
@@ -1392,26 +1397,28 @@ int cxgbei_conn_set_ulp_mode(struct socket *so, void *conn)
 	return 0;
 }
 
-int cxgbei_conn_close(struct socket *so)
+int
+cxgbei_conn_close(struct socket *so)
 {
 	iscsi_socket *isock = NULL;
 	isock = (iscsi_socket *)(so)->so_emuldata;
-	if (!isock) return 0;
+	if (isock == NULL) return 0;
 
 	free(isock, M_CXGBEI);
 	return 0;
 }
 
-static int cxgbei_init(void)
+static int
+cxgbei_init(void)
 {
 	return cxgbei_ulp2_init();
 }
 
-static void cxgbei_cleanup(void)
+static void
+cxgbei_cleanup(void)
 {
 	cxgbei_ulp2_exit();
 	offload_device_remove();
-	cxgbei_log_info("cxgbei_cleanup module: unloaded Sucessfully.\n");
 }
 
 static int
