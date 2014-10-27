@@ -217,7 +217,7 @@ ppod_write_idata(struct cxgbei_ulp2_ddp_info *ddp,
 	wr = alloc_wrqe(wr_len, toep->ctrlq);
 	if (wr == NULL) {
 		cxgbei_log_error("%s: alloc wrqe failed\n", __func__);
-		return 0;
+		return -ENOMEM;
 	}
 
 	req = wrtod(wr);
@@ -247,12 +247,12 @@ t4_ddp_set_map(struct cxgbei_ulp2_ddp_info *ddp,
 	struct socket *sk;
 	struct toepcb *toep;
 	struct tcpcb *tp;
-	int err = -1;
+	int err;
 	unsigned int pidx = 0, w_npods = 0, cnt;
 
 	if (isock == NULL) {
 		cxgbei_log_error("%s: isock NULL.\n", __func__);
-		return err;
+		return -EINVAL;
 	}
 	sk = isock->sock;
 	tp = so_sototcpcb(sk);
@@ -727,7 +727,6 @@ process_rx_iscsi_hdr(struct socket *sk, struct mbuf *m)
                         cxgbei_log_warn(
 			"tid 0x%x, CPL_ISCSI_HDR, BAD seq got 0x%x exp 0x%x.\n",
 				toep->tid, cb->seq, tp->rcv_nxt);
-				//mtx_unlock(&isock->iscsi_rcv_mbufq.lock);
                         goto err_out1;
                 }
                 byte = m->m_data;
@@ -1178,7 +1177,7 @@ send_set_tcb_field(struct socket *sk, u16 word, u64 mask, u64 val,
 
         wr = alloc_wrqe(sizeof(*req), toep->ctrlq);
         if (wr == NULL)
-                return -1;
+		return -EINVAL;
         req = wrtod(wr);
 
         INIT_TP_WR_MIT_CPL(req, CPL_SET_TCB_FIELD, toep->tid);
@@ -1337,36 +1336,36 @@ cxgbei_conn_set_ulp_mode(struct socket *so, void *conn)
 	offload_device *odev = NULL;
 	struct icl_conn *ic = (struct icl_conn*)conn;
 
-	if (toep == NULL) return -1;
+	if (toep == NULL) return -EINVAL;
 
 	ifp = toep->port->ifp;
-	if (ifp == NULL) return -1;
+	if (ifp == NULL) return -EINVAL;
 
 	if (!(sototcpcb(so)->t_flags & TF_TOE) ||
                 !(ifp->if_capenable & IFCAP_TOE)) {
 		cxgbei_log_error("TOE not enabled on:%s\n", ifp->if_xname);
-		return -1;
+		return -EINVAL;
 	}
 
 	/* if ULP_MODE is set by TOE driver, treat it as non-offloaded */
 	if (toep->ulp_mode) {
 		cxgbei_log_info("T4 sk 0x%p, ulp mode already set 0x%x.\n",
 				so, toep->ulp_mode);
-		return -1;
+		return -EINVAL;
 	}
 	sc = toep->port->adapter;
 	tdev = &toep->td->tod;
 	/* if toe dev is not set, treat it as non-offloaded */
 	if (tdev == NULL) {
 		cxgbei_log_error("T4 sk 0x%p, tdev NULL.\n", so);
-		return -1;
+		return -EINVAL;
 	}
 
 	isock = (iscsi_socket *)malloc(sizeof(iscsi_socket), M_CXGBEI,
 				M_NOWAIT | M_ZERO);
 	if (isock == NULL) {
 		cxgbei_log_error("T4 sk 0x%p, isock alloc failed.\n", so);
-		return -1;
+		return -EINVAL;
 	}
 	isock->mbuf_ulp_lhdr = NULL;
 	isock->sock = so;
@@ -1394,7 +1393,7 @@ cxgbei_conn_set_ulp_mode(struct socket *so, void *conn)
 		if ((odev = add_cxgbei_dev(ifp, tdev)) == NULL) {
 			cxgbei_log_error("T4 sk 0x%p, tdev %s, 0x%p, odev NULL.\n",
 						so, ifp->if_xname, tdev);
-			return -1;
+			return -EINVAL;
 		}
 	}
 

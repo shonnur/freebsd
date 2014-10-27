@@ -60,9 +60,9 @@ struct ulp_iscsi_info {
  * @rsvd_mask:	reserved bit mask
  */
 typedef struct cxgbei_ulp2_tag_format {
-	unsigned char sw_bits; //idx_bits
+	unsigned char sw_bits;
 	unsigned char rsvd_bits; 
-	unsigned char rsvd_shift; //color bits 
+	unsigned char rsvd_shift;
 	unsigned char filler[1];
 	uint32_t rsvd_mask;
 }cxgbei_ulp2_tag_format;
@@ -71,7 +71,7 @@ typedef struct cxgbei_ulp2_tag_format {
 #define DDP_THRESHOLD	2048
 
 /*
- * cxgb3i ddp tag are 32 bits, it consists of reserved bits used by h/w and
+ * cxgbei ddp tag are 32 bits, it consists of reserved bits used by h/w and
  * non-reserved bits that can be used by the iscsi s/w.
  * The reserved bits are identified by the rsvd_bits and rsvd_shift fields
  * in struct cxgbei_ulp2_tag_format.
@@ -105,8 +105,6 @@ cxgbei_ulp2_sw_tag_usable(struct cxgbei_ulp2_tag_format *tformat,
 					uint32_t sw_tag)
 {
 	sw_tag >>= (32 - tformat->rsvd_bits + tformat->rsvd_shift);
-	//printf("%s: sw_tag:0x%x !sw_tag:0x%x rsvd_bits:%d rsvd_shift:%d\n",
-	//__funct__, sw_tag, !sw_tag, tformat->rsvd_bits, tformat->rsvd_shift);
 	return !sw_tag;
 }
 
@@ -125,13 +123,9 @@ cxgbei_ulp2_set_non_ddp_tag(struct cxgbei_ulp2_tag_format *tformat,
 	if (sw_tag) {
                 u32 v1 = sw_tag & ((1 << (rsvd_bits - 1)) - 1);
                 u32 v2 = (sw_tag >> (rsvd_bits - 1)) << rsvd_bits;
-		//printf("%s: sw_tag:0x%x v1:0x%x v2:0x%x returning:0x%x\n",
-		//__func__, sw_tag, v1, v2, (v2 | (1 << (rsvd_bits - 1)) | v1));
                 return v2 | (1 << (rsvd_bits - 1)) | v1;
         }
 
-	//printf("%s: sw_tag:0x%x returning:0x%x\n",
-	//		__func__, sw_tag, (sw_tag | (1 << (rsvd_bits - 1))));
         return sw_tag | (1 << (rsvd_bits - 1)) ;
 }
 
