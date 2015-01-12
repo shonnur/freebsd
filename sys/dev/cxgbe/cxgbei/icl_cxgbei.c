@@ -316,7 +316,7 @@ icl_pdu_size(const struct icl_pdu *response)
 static uint32_t
 icl_conn_build_tasktag(struct icl_conn *ic, uint32_t tag)
 {
-	return (tag % CXGBEI_MAX_TAG);
+	return tag;
 }
 
 static int

@@ -306,14 +306,4 @@ extern void (*tom_cpl_iscsi_callback)(struct tom_data *, struct socket *,
     void *, unsigned int);
 extern struct mbuf *(*tom_queue_iscsi_callback)(struct socket*, unsigned int,
     int *);
-void t4tom_register_iscsi_ofld_callback(int (*fp)(struct socket *, void *));
-void t4tom_register_iscsi_ofld_conn_cleanup_callback(int (*fp)(struct socket *));
-void t4tom_register_iscsi_ofld_ddp_callback(void (*fp)(void *, void *, void *, uint32_t *, int));
-void t4tom_register_iscsi_ofld_cleanup_callback(void (*fp)(void *, void *));
-void t4tom_register_iscsi_ofld_tx_callback(int (*fp)(void *, void *));
-void t4tom_register_iscsi_ofld_parse_itt_callback(uint32_t (*fp)(struct socket *, uint32_t));
-int t4tom_cpl_handler_registered(struct adapter *, unsigned int);
-void t4tom_register_cpl_iscsi_callback(void (*fp)(struct tom_data *,
-                        struct socket *, void *, unsigned int));
-
 #endif

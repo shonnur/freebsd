@@ -104,6 +104,8 @@ static inline int
 cxgbei_ulp2_sw_tag_usable(struct cxgbei_ulp2_tag_format *tformat,
 					uint32_t sw_tag)
 {
+	return 1;
+
 	sw_tag >>= (32 - tformat->rsvd_bits + tformat->rsvd_shift);
 	return !sw_tag;
 }

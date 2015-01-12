@@ -27,6 +27,7 @@
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
  */
+
 #include <sys/types.h>
 #include <sys/module.h>
 #include <sys/systm.h>
@@ -217,7 +218,7 @@ ppod_write_idata(struct cxgbei_ulp2_ddp_info *ddp,
 	wr = alloc_wrqe(wr_len, toep->ctrlq);
 	if (wr == NULL) {
 		cxgbei_log_error("%s: alloc wrqe failed\n", __func__);
-		return -ENOMEM;
+                return -ENOMEM;
 	}
 
 	req = wrtod(wr);
@@ -559,8 +560,8 @@ cxgbei_task_reserve_itt(struct icl_conn *ic, void **prv,
 			err = t4_sk_ddp_tag_reserve(isock, scmd->dxfer_len, sge,
 					 tdata->nsge, &tdata->sc_ddp_tag);
 		} else {
-			cxgbei_log_debug("sc_ddp_tag:0x%x not usable\n",
-					tdata->sc_ddp_tag);
+			cxgbei_log_info("itt:0x%x sc_ddp_tag:0x%x not usable\n",
+					*itt, tdata->sc_ddp_tag);
 		}
 	}
 out:
@@ -909,7 +910,7 @@ process_rx_data_ddp(struct socket *sk, void *m)
 			offset, dlen, ttt, ntohl(cpl->seq), ntohl(cpl->ddpvld));
                 }
                 if ((opcode & 0x3F) == 0x25) {
-			//if (!(lcb->flags & SBUF_ULP_FLAG_DATA_DDPED))
+			if (!(lcb->flags & SBUF_ULP_FLAG_DATA_DDPED))
 			printf("CPL_RX_DATA_DDP: tid 0x%x, data-in %s ddp'ed\
 			(%u+%u), seq 0x%x, ddpvld 0x%x.\n",
 			toep->tid,
@@ -1247,7 +1248,11 @@ void
 cxgbei_conn_task_reserve_itt(void *conn, void **prv,
 				void *scmd, unsigned int *itt)
 {
-	*itt = htonl(cxgbei_task_reserve_itt(conn, prv, scmd, itt));
+	//*itt = htonl(cxgbei_task_reserve_itt(conn, prv, scmd, itt));
+	unsigned int tag;
+	tag = cxgbei_task_reserve_itt(conn, prv, scmd, itt);
+	if (tag)		
+		*itt = htonl(tag);
 	return;
 }
 
@@ -1256,7 +1261,11 @@ void
 cxgbei_conn_transfer_reserve_ttt(void *conn, void **prv,
 				void *scmd, unsigned int *ttt)
 {
-	*ttt = htonl(cxgbei_task_reserve_ttt(conn, prv, scmd, ttt));
+	//*ttt = htonl(cxgbei_task_reserve_ttt(conn, prv, scmd, ttt));
+	unsigned int tag;
+	tag = cxgbei_task_reserve_ttt(conn, prv, scmd, ttt);
+	if (tag)		
+		*ttt = htonl(tag);
 	return;
 }
 

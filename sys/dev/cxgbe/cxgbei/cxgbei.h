@@ -184,9 +184,6 @@ enum {
 	TOM_CPL_RX_DATA_DDP_REGISTERED_BIT
 };
 
-/* 17-bits are used for sw_tag */
-#define CXGBEI_MAX_TAG	(127 *1024)
-
 #define ODEV_FLAG_ULP_CRC_ENABLED       0x1
 #define ODEV_FLAG_ULP_DDP_ENABLED       0x2
 #define ODEV_FLAG_ULP_TX_ALLOC_DIGEST   0x4
