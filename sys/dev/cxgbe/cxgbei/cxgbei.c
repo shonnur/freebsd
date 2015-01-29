@@ -320,7 +320,7 @@ t4_ddp_clear_map(struct cxgbei_ulp2_ddp_info *ddp,
  * maintains a list of the cxgbei devices
  */
 typedef struct offload_device {
-	LIST_ENTRY(offload_device) link;
+	SLIST_ENTRY(offload_device) link;
 	unsigned char d_version;
 	unsigned char d_tx_hdrlen;      /* CPL_TX_DATA, < 256 */
 	unsigned char d_ulp_rx_datagap; /* for coalesced iscsi msg */
@@ -336,7 +336,7 @@ typedef struct offload_device {
 	void* (*tdev2ddp)(void *tdev);
 }offload_device;
 
-LIST_HEAD(, offload_device) odev_list = LIST_HEAD_INITIALIZER(head);
+SLIST_HEAD(, offload_device) odev_list;
 
 static void t4_unregister_cpl_handler_with_tom(struct adapter *sc);
 static offload_device *
@@ -347,7 +347,7 @@ offload_device_new(void *tdev)
 			M_CXGBEI, M_NOWAIT | M_ZERO);
 	if (odev) {
 		odev->d_tdev = tdev;
-		LIST_INSERT_HEAD(&odev_list, odev, link);
+		SLIST_INSERT_HEAD(&odev_list, odev, link);
 	}
 
 	return odev;
@@ -358,8 +358,8 @@ offload_device_find(struct toedev *tdev)
 {
 	offload_device *odev = NULL;
 
-	if (!LIST_EMPTY(&odev_list)) {
-		LIST_FOREACH(odev, &odev_list, link) {
+	if (!SLIST_EMPTY(&odev_list)) {
+		SLIST_FOREACH(odev, &odev_list, link) {
 		if (odev->d_tdev == tdev)
 			break;
 		}
@@ -386,16 +386,18 @@ cxgbei_odev_cleanup(offload_device *odev)
 static void
 offload_device_remove()
 {
-	offload_device *odev = NULL;
+	offload_device *odev = NULL, *next = NULL;
 
-	if (LIST_EMPTY(&odev_list))
+	if (SLIST_EMPTY(&odev_list))
 		return;
 
-	LIST_FOREACH(odev, &odev_list, link) {
-		LIST_REMOVE(odev, link);
+	for (odev = SLIST_FIRST(&odev_list); odev != NULL; odev = next) {
+		SLIST_REMOVE(&odev_list, odev, offload_device, link);
+		next = SLIST_NEXT(odev, link);
 		cxgbei_odev_cleanup(odev);
 		free(odev, M_CXGBEI);
 	}
+
 	return;
 }
 
@@ -847,7 +849,7 @@ process_rx_data_ddp(struct socket *sk, void *m)
 	struct inpcb *inp = toep->inp;
         struct mbuf *lmbuf;
         struct ulp_mbuf_cb *lcb, *lcb1;
-        unsigned int val;
+        unsigned int val, pdulen;
         iscsi_socket *isock = (iscsi_socket *)(sk)->so_emuldata;
 
 	if (!isock->mbuf_ulp_lhdr) {
@@ -880,6 +882,7 @@ process_rx_data_ddp(struct socket *sk, void *m)
         }
 
         lcb->ulp.iscsi.ddigest = ntohl(cpl->ulp_crc);
+        pdulen = lcb->ulp.iscsi.pdulen;
 
         val = ntohl(cpl->ddpvld);
         if (val & F_DDP_PADDING_ERR)
@@ -928,7 +931,7 @@ process_rx_data_ddp(struct socket *sk, void *m)
 	/* update rx credits */
 	INP_WLOCK(inp);
 	SOCK_LOCK(sk);
-	toep->sb_cc += lcb->ulp.iscsi.pdulen;
+	toep->sb_cc += pdulen;
 	SOCK_UNLOCK(sk);
 	cxgbei_log_debug("sk:%p sb_cc 0x%x, rcv_nxt 0x%x rcv_wnd:0x%lx.\n",
 			sk, toep->sb_cc, tp->rcv_nxt, tp->rcv_wnd);
@@ -1436,6 +1439,7 @@ cxgbei_conn_close(struct socket *so)
 	iscsi_socket *isock = NULL;
 	isock = (iscsi_socket *)(so)->so_emuldata;
 	if (isock == NULL) return 0;
+	so->so_emuldata = NULL;
 
 	free(isock, M_CXGBEI);
 	return 0;
@@ -1467,6 +1471,7 @@ cxgbei_loader(struct module *mod, int cmd, void *arg)
 			err = (ENOMEM);
 			break;
 		}
+		SLIST_INIT(&odev_list);
 		cxgbei_log_info("cxgbei module loaded Sucessfully.\n");
 		break;
 	case MOD_UNLOAD:
