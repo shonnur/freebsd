@@ -73,40 +73,6 @@ cxgbei_counter_dec_and_read(volatile int *p)
 	return atomic_load_acq_int(p);
 }
 
-#if 0
-#define RSVD_PAGE_MAX   2
-struct page *chrsvd_pages[RSVD_PAGE_MAX] = {NULL, NULL};
-void *chrsvd_pages_addr[RSVD_PAGE_MAX] = {NULL, NULL};
-
-int
-cxgbei_ulp2_init(void)
-{
-        int i;
-
-        for (i = 0; i < RSVD_PAGE_MAX; i++) {
-        	chrsvd_pages[i] = (struct page *)malloc(PAGE_SIZE,
-					M_CXGBEI, M_NOWAIT|M_ZERO);
-                if (chrsvd_pages[i] == NULL) {
-                        printf("ddp rsvd page %d OOM.\n", i);
-                        return -ISCSI_ENOMEM;
-                }
-        }
-
-        return 0;
-}
-
-void
-cxgbei_ulp2_exit(void)
-{
-        int i;
-        for (i = 0; i < RSVD_PAGE_MAX; i++)
-                if (chrsvd_pages[i]) {
-			free(chrsvd_pages[i], M_CXGBEI);
-                        chrsvd_pages[i] = NULL;
-                }
-}
-#endif
-
 static inline int
 get_order(unsigned long size)
 {
@@ -241,7 +207,7 @@ cxgbei_ulp2_ddp_adjust_page_table(void)
 	if (PAGE_SIZE < (1UL << ddp_page_shift[0])) {
 		ddp_log_info("PAGE_SIZE %u too small, min. %lu.\n",
 				PAGE_SIZE, 1UL << ddp_page_shift[0]);
-		return -EINVAL;
+		return EINVAL;
 	}
 
 	base_order = get_order(1UL << ddp_page_shift[0]);
@@ -342,7 +308,6 @@ cxgbei_ulp2_ddp_make_gl_from_iscsi_sgvec
 {
 	struct cxgbei_ulp2_gather_list *gl;
 	cxgbei_sgl_t *sg = sgl;
-	//struct page *sgpage = (struct page *)((u64)sg->sg_addr & (~PAGE_MASK));
 	void *sgpage = (void *)((u64)sg->sg_addr & (~PAGE_MASK));
 	unsigned int sglen = sg->sg_length;
 	unsigned int sgoffset = (u64)sg->sg_addr & PAGE_MASK;
@@ -372,7 +337,6 @@ cxgbei_ulp2_ddp_make_gl_from_iscsi_sgvec
 		__func__, xferlen, gl->length, gl->offset, sg->sg_addr, npages);
 
 	for (i = 1, sg = sg_next(sg); i < sgcnt; i++, sg = sg_next(sg)) {
-		//struct page *page = sg->sg_addr;
 		void *page = sg->sg_addr;
 
 		if (sgpage == page && sg->sg_offset == sgoffset + sglen)
@@ -558,10 +522,10 @@ cxgbei_ulp2_adapter_ddp_info(struct cxgbei_ulp2_ddp_info *ddp,
 	unsigned char idx_bits;
 
 	if (!tformat)
-		return -EINVAL;
+		return EINVAL;
 
 	if (!ddp)
-		return -EINVAL;
+		return EINVAL;
 
 	idx_bits = 32 - tformat->sw_bits;
 	tformat->sw_bits = ddp->idx_bits;
@@ -615,8 +579,7 @@ cxgbei_ulp2_ddp_cleanup(struct cxgbei_ulp2_ddp_info **ddp_pp)
 			} else
 				i++;
 		}
-		//if (ddp->rsvd_page_phys_addr)
-			bus_dmamap_unload(ddp->ulp_ddp_tag, ddp->ulp_ddp_map);
+		bus_dmamap_unload(ddp->ulp_ddp_tag, ddp->ulp_ddp_map);
 		cxgbei_ulp2_free_big_mem(ddp);
 	}
 }
@@ -637,7 +600,6 @@ ddp_init(void *tdev,
 	struct cxgbei_ulp2_ddp_info *ddp = *ddp_pp;
 	unsigned int ppmax, bits;
 	int i, rc;
-	//bus_addr_t pa = 0;
 
 	if (uinfo->ulimit <= uinfo->llimit) {
 		ddp_log_warn("tdev, ddp 0x%x >= 0x%x.\n",
@@ -718,18 +680,6 @@ ddp_init(void *tdev,
 		printf("bus_dmamap_Create failed\n");
 		return;
 	}
-
-#if 0
-	rc = bus_dmamap_load(ddp->ulp_ddp_tag, ddp->ulp_ddp_map,
-			chrsvd_pages[1], MJUMPAGESIZE, ulp2_dma_map_addr,
-			&pa, 0);
-	if (rc != 0) {
-		ddp_log_error("unable to map rsvd page 0x%p.\n",
-			chrsvd_pages[1]);
-		return;
-	}
-	ddp->rsvd_page_phys_addr = pa;
-#endif
 }
 
 /**
@@ -744,7 +694,7 @@ cxgbei_ulp2_ddp_init(void *tdev,
 		page_idx = cxgbei_ulp2_ddp_find_page_index(PAGE_SIZE);
 
 		if (page_idx == DDP_PGIDX_MAX) {
-			if (cxgbei_ulp2_ddp_adjust_page_table() < 0) {
+			if (cxgbei_ulp2_ddp_adjust_page_table()) {
 				ddp_log_info("PAGE_SIZE %x, ddp disabled.\n",
 						PAGE_SIZE);
 				return;
