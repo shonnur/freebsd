@@ -70,46 +70,6 @@ typedef struct iscsi_socket {
 #define ISCSI_SG_SBUF_LISTTAIL          0x200
 #define ISCSI_SG_SBUF_XFER_DONE         0x400
 
-enum iscsi_errors {
-        ISCSI_GOOD,
-        ISCSI_EFAIL,            /* general failure */
-        ISCSI_EUSER,            /* copy from/to user space failed */
-        ISCSI_ECHRDEV,          /* unable to register ioctl device */
-        ISCSI_ECMD,             /* unknown control command */
-        ISCSI_EREQ,             /* unknown control command request */
-        ISCSI_ENOBUF,           /* no ioctl buffer */
-        ISCSI_ENONODE,          /* initiator/target not found */
-        ISCSI_ENONAME,          /* initiator/target name missing */
-        ISCSI_ENOTFOUND,        /* entity not found */
-        ISCSI_ENOMATCH,         /* no match found */
-        ISCSI_EMISMATCH,        /* mismatch */
-        ISCSI_EOPFAILED,        /* operation failed */
-        ISCSI_EDUP,             /* duplicate, already existed */
-        ISCSI_EOVERLAP,         /* overlapping values */
-        ISCSI_EMULTI,           /* multiple values */
-        ISCSI_EKEY,             /* invalid key */
-        ISCSI_EFORMAT,          /* invalid format */
-        ISCSI_EFORMAT_STR,      /* string unterminated */
-        ISCSI_EFORMAT_LONG,     /* longer than max. */
-        ISCSI_EFORMAT_SHORT,    /* short than min. */
-        ISCSI_EFORMAT_BIG,      /* larger than max. */
-        ISCSI_ENOMEM,           /* out of memory */
-        ISCSI_ENOTREADY,        /* busy */
-        ISCSI_EBUSY,            /* busy */
-        ISCSI_EFULL,            /* full */
-        ISCSI_EINVAL,           /* invalid value */
-        ISCSI_EINVAL_OOR,       /* invalid value, out of range */
-        ISCSI_EINVAL_STATE,     /* invalid state */
-        ISCSI_EZERO,            /* all zero value */
-        ISCSI_ESOCK,
-        ISCSI_EIO,
-        ISCSI_ETHREAD,
-
-        ISCSI_ENULL,            /* null pointer */
-        ISCSI_ENOTSUPP,         /* functionality not supported */
-        ISCSI_ESBUF_R,          /* socket buffer read error */
-
-};
 typedef struct cxgbei_sgl {
         int     sg_flag;
         void    *sg_addr;
@@ -126,8 +86,6 @@ typedef struct cxgbei_sgl {
 #define sg_len(_sgel)           _sgel->sg_length
 #define sg_off(_sgel)           _sgel->sg_offset
 #define sg_next(_sgel)          _sgel + 1
-
-static MALLOC_DEFINE(M_CXGBEI, "cxgbei", "Chelsio iSCSI offload driver");
 
 #define SBUF_ULP_FLAG_HDR_RCVD          0x1
 #define SBUF_ULP_FLAG_DATA_RCVD         0x2

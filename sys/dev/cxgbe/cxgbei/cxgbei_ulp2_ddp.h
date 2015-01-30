@@ -193,7 +193,8 @@ struct cxgbei_ulp2_gather_list {
 	bus_size_t	mapsize;
 	bus_dmamap_t	bus_map;
 	bus_dma_segment_t	*segments;
-	struct page	**pages;
+	//struct page	**pages;
+	void **pages;
 	struct dma_segments dma_sg[0];
 };
 

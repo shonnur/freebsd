@@ -27,7 +27,7 @@
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
  */
-
+#include "opt_inet.h"
 #include <sys/types.h>
 #include <sys/module.h>
 #include <sys/systm.h>
@@ -344,7 +344,7 @@ offload_device_new(void *tdev)
 {
 	offload_device *odev = NULL;
 	odev = malloc(sizeof(struct offload_device),
-			M_CXGBEI, M_NOWAIT | M_ZERO);
+			M_CXGBE, M_NOWAIT | M_ZERO);
 	if (odev) {
 		odev->d_tdev = tdev;
 		SLIST_INSERT_HEAD(&odev_list, odev, link);
@@ -395,7 +395,7 @@ offload_device_remove()
 		SLIST_REMOVE(&odev_list, odev, offload_device, link);
 		next = SLIST_NEXT(odev, link);
 		cxgbei_odev_cleanup(odev);
-		free(odev, M_CXGBEI);
+		free(odev, M_CXGBE);
 	}
 
 	return;
@@ -836,7 +836,8 @@ iscsi_conn_receive_pdu(struct iscsi_socket *isock)
 
 err_out:
 	//SOCK_UNLOCK(isock->sock);
-	free(response, M_CXGBEI);
+	//free(response, M_CXGBEI);
+	icl_pdu_free(response);
 	return;
 }
 
@@ -894,7 +895,7 @@ process_rx_data_ddp(struct socket *sk, void *m)
         if (!(lcb->flags & SBUF_ULP_FLAG_DATA_RCVD)) {
                 lcb->flags |= SBUF_ULP_FLAG_DATA_DDPED;
 	}
-#ifdef __T4_DBG_DDP_FAILURE__
+//#ifdef __T4_DBG_DDP_FAILURE__
 //      else
         {
                 unsigned char *bhs = lmbuf->m_data;
@@ -913,7 +914,7 @@ process_rx_data_ddp(struct socket *sk, void *m)
 			offset, dlen, ttt, ntohl(cpl->seq), ntohl(cpl->ddpvld));
                 }
                 if ((opcode & 0x3F) == 0x25) {
-			if (!(lcb->flags & SBUF_ULP_FLAG_DATA_DDPED))
+			//if (!(lcb->flags & SBUF_ULP_FLAG_DATA_DDPED))
 			printf("CPL_RX_DATA_DDP: tid 0x%x, data-in %s ddp'ed\
 			(%u+%u), seq 0x%x, ddpvld 0x%x.\n",
 			toep->tid,
@@ -922,7 +923,7 @@ process_rx_data_ddp(struct socket *sk, void *m)
                 }
                 }
         }
-#endif
+//#endif
 
 	iscsi_conn_receive_pdu(isock);
 	//SOCK_UNLOCK(sk);
@@ -1373,7 +1374,7 @@ cxgbei_conn_set_ulp_mode(struct socket *so, void *conn)
 		return -EINVAL;
 	}
 
-	isock = (iscsi_socket *)malloc(sizeof(iscsi_socket), M_CXGBEI,
+	isock = (iscsi_socket *)malloc(sizeof(iscsi_socket), M_CXGBE,
 				M_NOWAIT | M_ZERO);
 	if (isock == NULL) {
 		cxgbei_log_error("T4 sk 0x%p, isock alloc failed.\n", so);
@@ -1441,20 +1442,21 @@ cxgbei_conn_close(struct socket *so)
 	if (isock == NULL) return 0;
 	so->so_emuldata = NULL;
 
-	free(isock, M_CXGBEI);
+	free(isock, M_CXGBE);
 	return 0;
 }
 
 static int
 cxgbei_init(void)
 {
-	return cxgbei_ulp2_init();
+	return 0;
+	//return cxgbei_ulp2_init();
 }
 
 static void
 cxgbei_cleanup(void)
 {
-	cxgbei_ulp2_exit();
+	//cxgbei_ulp2_exit();
 	offload_device_remove();
 }
 

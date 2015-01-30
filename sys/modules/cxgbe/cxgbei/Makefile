@@ -19,8 +19,9 @@ SRCS+=	opt_cam.h
 SRCS+=	icl_conn_if.h
 
 CFLAGS+= -I${CXGBE}
-CFLAGS +=-DTCP_OFFLOAD
+#CFLAGS +=-DTCP_OFFLOAD
 
-MFILES=	kern/bus_if.m kern/device_if.m dev/iscsi/icl_conn_if.m dev/pci/pci_if.m
+#MFILES=	kern/bus_if.m kern/device_if.m dev/iscsi/icl_conn_if.m dev/pci/pci_if.m
+MFILES=	dev/iscsi/icl_conn_if.m
 
 .include <bsd.kmod.mk>

@@ -26,7 +26,7 @@
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
  */
-
+#include "opt_inet.h"
 #include <sys/types.h>
 #include <sys/module.h>
 #include <sys/systm.h>
@@ -73,6 +73,7 @@ cxgbei_counter_dec_and_read(volatile int *p)
 	return atomic_load_acq_int(p);
 }
 
+#if 0
 #define RSVD_PAGE_MAX   2
 struct page *chrsvd_pages[RSVD_PAGE_MAX] = {NULL, NULL};
 void *chrsvd_pages_addr[RSVD_PAGE_MAX] = {NULL, NULL};
@@ -104,6 +105,7 @@ cxgbei_ulp2_exit(void)
                         chrsvd_pages[i] = NULL;
                 }
 }
+#endif
 
 static inline int
 get_order(unsigned long size)
@@ -340,7 +342,8 @@ cxgbei_ulp2_ddp_make_gl_from_iscsi_sgvec
 {
 	struct cxgbei_ulp2_gather_list *gl;
 	cxgbei_sgl_t *sg = sgl;
-	struct page *sgpage = (struct page *)((u64)sg->sg_addr & (~PAGE_MASK));
+	//struct page *sgpage = (struct page *)((u64)sg->sg_addr & (~PAGE_MASK));
+	void *sgpage = (void *)((u64)sg->sg_addr & (~PAGE_MASK));
 	unsigned int sglen = sg->sg_length;
 	unsigned int sgoffset = (u64)sg->sg_addr & PAGE_MASK;
 	unsigned int npages = (xferlen + sgoffset + PAGE_SIZE - 1) >>
@@ -354,14 +357,14 @@ cxgbei_ulp2_ddp_make_gl_from_iscsi_sgvec
 	}
 
 	gl = malloc(sizeof(struct cxgbei_ulp2_gather_list) +
-		npages * (sizeof(struct dma_segments) + sizeof(struct page *)),
+		npages * (sizeof(struct dma_segments) + sizeof(void *)),
 		M_DEVBUF, M_NOWAIT | M_ZERO);
 	if (gl == NULL) {
 		ddp_log_error("gl alloc failed\n");
 		return NULL;
 	}
 
-	gl->pages = (struct page **)&gl->dma_sg[npages];
+	gl->pages = (void **)&gl->dma_sg[npages];
 	gl->length = xferlen;
 	gl->offset = sgoffset;
 	gl->pages[0] = sgpage;
@@ -369,7 +372,8 @@ cxgbei_ulp2_ddp_make_gl_from_iscsi_sgvec
 		__func__, xferlen, gl->length, gl->offset, sg->sg_addr, npages);
 
 	for (i = 1, sg = sg_next(sg); i < sgcnt; i++, sg = sg_next(sg)) {
-		struct page *page = sg->sg_addr;
+		//struct page *page = sg->sg_addr;
+		void *page = sg->sg_addr;
 
 		if (sgpage == page && sg->sg_offset == sgoffset + sglen)
 			sglen += sg->sg_length;
@@ -611,7 +615,7 @@ cxgbei_ulp2_ddp_cleanup(struct cxgbei_ulp2_ddp_info **ddp_pp)
 			} else
 				i++;
 		}
-		if (ddp->rsvd_page_phys_addr)
+		//if (ddp->rsvd_page_phys_addr)
 			bus_dmamap_unload(ddp->ulp_ddp_tag, ddp->ulp_ddp_map);
 		cxgbei_ulp2_free_big_mem(ddp);
 	}
@@ -633,7 +637,7 @@ ddp_init(void *tdev,
 	struct cxgbei_ulp2_ddp_info *ddp = *ddp_pp;
 	unsigned int ppmax, bits;
 	int i, rc;
-	bus_addr_t pa = 0;
+	//bus_addr_t pa = 0;
 
 	if (uinfo->ulimit <= uinfo->llimit) {
 		ddp_log_warn("tdev, ddp 0x%x >= 0x%x.\n",
@@ -715,6 +719,7 @@ ddp_init(void *tdev,
 		return;
 	}
 
+#if 0
 	rc = bus_dmamap_load(ddp->ulp_ddp_tag, ddp->ulp_ddp_map,
 			chrsvd_pages[1], MJUMPAGESIZE, ulp2_dma_map_addr,
 			&pa, 0);
@@ -724,6 +729,7 @@ ddp_init(void *tdev,
 		return;
 	}
 	ddp->rsvd_page_phys_addr = pa;
+#endif
 }
 
 /**
