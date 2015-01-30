@@ -142,14 +142,14 @@ unsigned char page_idx = DDP_PGIDX_MAX;
 static inline int
 ddp_find_unused_entries(struct cxgbei_ulp2_ddp_info *ddp,
 			  unsigned int start, unsigned int max,
-			  unsigned int count,
+			  unsigned int count, unsigned int *idx,
 			  struct cxgbei_ulp2_gather_list *gl)
 {
 	unsigned int i, j, k;
 
 	/* not enough entries */
 	if ((max - start) < count)
-		return -EBUSY;
+		return EBUSY;
 
 	max -= count;
 	mtx_lock(&ddp->map_lock);
@@ -162,12 +162,13 @@ ddp_find_unused_entries(struct cxgbei_ulp2_ddp_info *ddp,
 			for (j = 0, k = i; j < count; j++, k++)
 				ddp->gl_map[k] = gl;
 			mtx_unlock(&ddp->map_lock);
-			return i;
+			*idx = i;
+			return 0;
 		}
 		i += j + 1;
 	}
 	mtx_unlock(&ddp->map_lock);
-	return -EBUSY;
+	return EBUSY;
 }
 
 static inline void
@@ -407,9 +408,8 @@ cxgbei_ulp2_ddp_tag_reserve(struct cxgbei_ulp2_ddp_info *ddp,
 				int gfp, int reply)
 {
 	struct cxgbei_ulp2_pagepod_hdr hdr;
-	unsigned int npods;
-	int idx = -1;
-	int err = -ENOMEM;
+	unsigned int npods, idx;
+	int rv;
 	u32 sw_tag = *tagp;
 	u32 tag;
 
@@ -423,20 +423,21 @@ cxgbei_ulp2_ddp_tag_reserve(struct cxgbei_ulp2_ddp_info *ddp,
 	npods = (gl->nelem + IPPOD_PAGES_MAX - 1) >> IPPOD_PAGES_SHIFT;
 
 	if (ddp->idx_last == ddp->nppods)
-		idx = ddp_find_unused_entries(ddp, 0, ddp->nppods, npods, gl);
+		rv = ddp_find_unused_entries(ddp, 0, ddp->nppods,
+						npods, &idx, gl);
 	else {
-		idx = ddp_find_unused_entries(ddp, ddp->idx_last + 1,
-					      ddp->nppods, npods, gl);
-		if (idx < 0 && ddp->idx_last >= npods) {
-			idx = ddp_find_unused_entries(ddp, 0,
+		rv = ddp_find_unused_entries(ddp, ddp->idx_last + 1,
+					      ddp->nppods, npods, &idx, gl);
+		if (rv && ddp->idx_last >= npods) {
+			rv = ddp_find_unused_entries(ddp, 0,
 				min(ddp->idx_last + npods, ddp->nppods),
-						      npods, gl);
+						      npods, &idx, gl);
 		}
 	}
-	if (idx < 0) {
+	if (rv) {
 		ddp_log_info("xferlen %u, gl %u, npods %u NO DDP.\n",
 			      gl->length, gl->nelem, npods);
-		return idx;
+		return rv;
 	}
 
 	tag = cxgbei_ulp2_ddp_tag_base(idx, ddp, tformat, sw_tag);
@@ -449,8 +450,8 @@ cxgbei_ulp2_ddp_tag_reserve(struct cxgbei_ulp2_ddp_info *ddp,
 	hdr.maxoffset = htonl(gl->length);
 	hdr.pgoffset = htonl(gl->offset);
 
-	err = ddp->ddp_set_map(ddp, isock, &hdr, idx, npods, gl, reply);
-	if (err < 0)
+	rv = ddp->ddp_set_map(ddp, isock, &hdr, idx, npods, gl, reply);
+	if (rv < 0)
 		goto unmark_entries;
 
 	ddp->idx_last = idx;
@@ -459,7 +460,7 @@ cxgbei_ulp2_ddp_tag_reserve(struct cxgbei_ulp2_ddp_info *ddp,
 
 unmark_entries:
 	ddp_unmark_entries(ddp, idx, npods);
-	return err;
+	return rv;
 }
 
 /**

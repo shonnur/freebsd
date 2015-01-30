@@ -253,7 +253,7 @@ t4_ddp_set_map(struct cxgbei_ulp2_ddp_info *ddp,
 
 	if (isock == NULL) {
 		cxgbei_log_error("%s: isock NULL.\n", __func__);
-		return -EINVAL;
+		return EINVAL;
 	}
 	sk = isock->sock;
 	tp = so_sototcpcb(sk);
@@ -517,7 +517,7 @@ t4_sk_ddp_tag_reserve(iscsi_socket *isock, unsigned int xferlen,
                                                 &odev->d_tag_format,
                                                 ddp_tag, gl,
                                                 0, 0);
-                if (err < 0) {
+                if (err) {
 			cxgbei_log_error("ddp_tag_reserve failed\n");
                         cxgbei_ulp2_ddp_release_gl(gl, odev->d_tdev);
 		}
