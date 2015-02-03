@@ -126,9 +126,7 @@ struct ulp_mbuf_cb {
         void *pdu;                      /* pdu pointer */
 };
 
-/* allocate m_tag */
-struct ulp_mbuf_cb * get_ulp_mbuf_cb(struct mbuf *m);
-
+/* private data for eack scsi task */
 typedef struct cxgbei_task_data {
 	cxgbei_sgl_t sgl[256];
 	unsigned int	nsge;
@@ -150,6 +148,7 @@ enum {
 #define ODEV_FLAG_ULP_ENABLED   \
         (ODEV_FLAG_ULP_CRC_ENABLED | ODEV_FLAG_ULP_DDP_ENABLED)
 
+struct ulp_mbuf_cb * get_ulp_mbuf_cb(struct mbuf *m);
 int cxgbei_conn_set_ulp_mode(struct socket *, void *);
 int cxgbei_conn_close(struct socket *);
 void cxgbei_conn_task_reserve_itt(void *, void **, void *, unsigned int *);

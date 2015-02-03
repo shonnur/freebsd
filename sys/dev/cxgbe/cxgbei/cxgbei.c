@@ -496,7 +496,7 @@ t4_sk_ddp_tag_reserve(iscsi_socket *isock, unsigned int xferlen,
         gl = cxgbei_ulp2_ddp_make_gl_from_iscsi_sgvec(xferlen, sgl, sgcnt,
                                         odev->d_tdev, 0);
         if (gl) {
-                err = cxgbei_ulp2_ddp_tag_reserve(odev->tdev2ddp(tdev),
+		err = cxgbei_ulp2_ddp_tag_reserve(odev->tdev2ddp(tdev),
                                                 isock,
                                                 isock->s_tid,
                                                 &odev->d_tag_format,
@@ -674,9 +674,8 @@ process_rx_iscsi_hdr(struct socket *sk, struct mbuf *m)
         struct toepcb *toep = tp->t_toe;
 
         struct cpl_iscsi_hdr *cpl =  mtod(m, struct cpl_iscsi_hdr *);
-        struct ulp_mbuf_cb *cb;
+        struct ulp_mbuf_cb *cb, *lcb;
         struct mbuf *lmbuf;
-        struct ulp_mbuf_cb *lcb;
         unsigned char *byte;
         iscsi_socket *isock = (iscsi_socket *)(sk)->so_emuldata;
 	unsigned int hlen, dlen, plen;
@@ -693,6 +692,7 @@ process_rx_iscsi_hdr(struct socket *sk, struct mbuf *m)
         }
 
 	mtx_lock(&isock->iscsi_rcv_mbufq.lock);
+
 	/* allocate m_tag to hold ulp info */
         cb = get_ulp_mbuf_cb(m);
         if (cb == NULL) {
@@ -700,6 +700,7 @@ process_rx_iscsi_hdr(struct socket *sk, struct mbuf *m)
 		goto err_out1;
         }
         cb->seq = ntohl(cpl->seq);
+
         /* strip off CPL header */
         m_adj(m, sizeof(*cpl));
 
@@ -871,7 +872,7 @@ process_rx_data_ddp(struct socket *sk, void *m)
         if (!(lcb->flags & SBUF_ULP_FLAG_DATA_RCVD)) {
                 lcb->flags |= SBUF_ULP_FLAG_DATA_DDPED;
 	}
-//#ifdef __T4_DBG_DDP_FAILURE__
+#ifdef __T4_DBG_DDP_FAILURE__
 //      else
         {
                 unsigned char *bhs = lmbuf->m_data;
@@ -899,7 +900,7 @@ process_rx_data_ddp(struct socket *sk, void *m)
                 }
                 }
         }
-//#endif
+#endif
 
 	iscsi_conn_receive_pdu(isock);
 	mtx_unlock(&isock->iscsi_rcv_mbufq.lock);
@@ -1064,6 +1065,9 @@ static void
 iscsi_cpl_handler_callback(struct tom_data *td, struct socket *sk,
                                         void *m, unsigned int op)
 {
+	if ((sk == NULL) || (sk->so_emuldata == NULL))
+		return;
+
         switch (op) {
         case CPL_ISCSI_HDR:
 		process_rx_iscsi_hdr(sk, m);
@@ -1212,7 +1216,6 @@ void
 cxgbei_conn_task_reserve_itt(void *conn, void **prv,
 				void *scmd, unsigned int *itt)
 {
-	//*itt = htonl(cxgbei_task_reserve_itt(conn, prv, scmd, itt));
 	unsigned int tag;
 	tag = cxgbei_task_reserve_itt(conn, prv, scmd, itt);
 	if (tag)		
@@ -1225,7 +1228,6 @@ void
 cxgbei_conn_transfer_reserve_ttt(void *conn, void **prv,
 				void *scmd, unsigned int *ttt)
 {
-	//*ttt = htonl(cxgbei_task_reserve_ttt(conn, prv, scmd, ttt));
 	unsigned int tag;
 	tag = cxgbei_task_reserve_ttt(conn, prv, scmd, ttt);
 	if (tag)		
@@ -1258,6 +1260,7 @@ cxgbei_cleanup_task(void *conn, void *ofld_priv)
 	memset(tdata, 0, sizeof(*tdata));	
 	return;
 }
+
 static void
 t4_sk_tx_mbuf_setmode(struct icl_pdu *req, void *toep, void *mbuf,
 		unsigned char mode, unsigned char hcrc, unsigned char dcrc)
@@ -1399,8 +1402,14 @@ cxgbei_conn_close(struct socket *so)
 {
 	iscsi_socket *isock = NULL;
 	isock = (iscsi_socket *)(so)->so_emuldata;
-	if (isock == NULL) return 0;
+	offload_device *odev = isock->s_odev;
+	struct toedev *tdev = odev->d_tdev;
+	struct adapter *sc = (struct adapter *)tdev->tod_softc;
+
 	so->so_emuldata = NULL;
+
+	/* de-register ULP CPL handlers with TOM */
+	t4_unregister_cpl_handler_with_tom(sc);
 
 	free(isock, M_CXGBE);
 	return 0;
