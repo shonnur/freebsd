@@ -54,18 +54,6 @@
 #include "cxgbei.h"
 #include "cxgbei_ulp2_ddp.h"
 
-#define ddp_log_error(fmt...) printf("cxgbei_ulp2_ddp: ERR! " fmt)
-#define ddp_log_warn(fmt...)  printf("cxgbei_ulp2_ddp: WARN! " fmt)
-#define ddp_log_info(fmt...)  printf("cxgbei_ulp2_ddp: " fmt)
-
-/* #define __DEBUG_CXGBI_DDP__ */
-#ifdef __DEBUG_CXGBI_DDP__
-#define ddp_log_debug(fmt, args...) \
-	printf("cxgbei_ulp2_ddp: %s - " fmt, __func__ , ## args)
-#else
-#define ddp_log_debug(fmt...)
-#endif
-
 static inline int
 cxgbei_counter_dec_and_read(volatile int *p)
 {	
@@ -195,7 +183,7 @@ cxgbei_ulp2_ddp_find_page_index(unsigned long pgsz)
 		if (pgsz == (1UL << ddp_page_shift[i]))
 			return i;
 	}
-	ddp_log_info("ddp page size 0x%lx not supported.\n", pgsz);
+	CTR1(KTR_CXGBE, "ddp page size 0x%lx not supported.\n", pgsz);
 	return DDP_PGIDX_MAX;
 }
 
@@ -206,7 +194,7 @@ cxgbei_ulp2_ddp_adjust_page_table(void)
 	unsigned int base_order, order;
 
 	if (PAGE_SIZE < (1UL << ddp_page_shift[0])) {
-		ddp_log_info("PAGE_SIZE %u too small, min. %lu.\n",
+		CTR2(KTR_CXGBE, "PAGE_SIZE %u too small, min. %lu.\n",
 				PAGE_SIZE, 1UL << ddp_page_shift[0]);
 		return EINVAL;
 	}
@@ -250,31 +238,32 @@ ddp_gl_map(struct toedev *tdev,
 
 	ddp = (struct cxgbei_ulp2_ddp_info *)sc->iscsi_softc;
 	if (ddp == NULL) {
-		ddp_log_error("tdev:%p sc:%p ddp:%p\n", tdev, sc, ddp);
-		return -ENOMEM;
+		printf("%s: DDP is NULL tdev:%p sc:%p ddp:%p\n",
+			__func__, tdev, sc, ddp);
+		return ENOMEM;
 	}
 	mtx_lock(&ddp->map_lock);
 	for (i = 0; i < gl->nelem; i++) {
 		rc = bus_dmamap_create(ddp->ulp_ddp_tag, 0,
 					&gl->dma_sg[i].bus_map);
 		if (rc != 0) {
-			ddp_log_error("unable to map page 0x%p.\n",
-					gl->pages[i]);
+			printf("%s: unable to map page 0x%p.\n",
+					__func__, gl->pages[i]);
 			goto unmap;
 		}
 		rc = bus_dmamap_load(ddp->ulp_ddp_tag, gl->dma_sg[i].bus_map,
 				gl->pages[i], PAGE_SIZE, ulp2_dma_map_addr,
 				&pa, BUS_DMA_NOWAIT);
 		if (rc != 0) {
-			ddp_log_error("unable to load page 0x%p.\n",
-					gl->pages[i]);
+			printf("%s:unable to load page 0x%p.\n",
+					__func__, gl->pages[i]);
 			goto unmap;
 		}
 		gl->dma_sg[i].phys_addr = pa;
 	}
 	mtx_unlock(&ddp->map_lock);
 
-	return i;
+	return 0;
 
 unmap:
 	if (i) {
@@ -284,7 +273,7 @@ unmap:
 		ddp_gl_unmap(tdev, gl);
 		gl->nelem = nelem;
 	}
-	return -ENOMEM;
+	return ENOMEM;
 }
 
 /**
@@ -317,7 +306,7 @@ cxgbei_ulp2_ddp_make_gl_from_iscsi_sgvec
 	int i = 1, j = 0;
 
 	if (xferlen <= DDP_THRESHOLD) {
-		ddp_log_debug("xfer %u < threshold %u, no ddp.\n",
+		CTR2(KTR_CXGBE, "xfer %u < threshold %u, no ddp.\n",
 			xferlen, DDP_THRESHOLD);
 		return NULL;
 	}
@@ -326,7 +315,7 @@ cxgbei_ulp2_ddp_make_gl_from_iscsi_sgvec
 		npages * (sizeof(struct dma_segments) + sizeof(void *)),
 		M_DEVBUF, M_NOWAIT | M_ZERO);
 	if (gl == NULL) {
-		ddp_log_error("gl alloc failed\n");
+		printf("%s: gl alloc failed\n", __func__);
 		return NULL;
 	}
 
@@ -334,7 +323,8 @@ cxgbei_ulp2_ddp_make_gl_from_iscsi_sgvec
 	gl->length = xferlen;
 	gl->offset = sgoffset;
 	gl->pages[0] = sgpage;
-	ddp_log_debug("xferlen:0x%x len:0x%x off:0x%x sg_addr:%p npages:%d\n",
+	CTR6(KTR_CXGBE,
+		"%s: xferlen:0x%x len:0x%x off:0x%x sg_addr:%p npages:%d\n",
 		__func__, xferlen, gl->length, gl->offset, sg->sg_addr, npages);
 
 	for (i = 1, sg = sg_next(sg); i < sgcnt; i++, sg = sg_next(sg)) {
@@ -415,9 +405,9 @@ cxgbei_ulp2_ddp_tag_reserve(struct cxgbei_ulp2_ddp_info *ddp,
 
 	if (page_idx >= DDP_PGIDX_MAX || !ddp || !gl || !gl->nelem ||
 		gl->length < DDP_THRESHOLD) {
-		ddp_log_info("pgidx %u, xfer %u/%u, NO ddp.\n",
+		CTR3(KTR_CXGBE, "pgidx %u, xfer %u/%u, NO ddp.\n",
 			      page_idx, gl->length, DDP_THRESHOLD);
-		return -EINVAL;
+		return EINVAL;
 	}
 
 	npods = (gl->nelem + IPPOD_PAGES_MAX - 1) >> IPPOD_PAGES_SHIFT;
@@ -435,13 +425,13 @@ cxgbei_ulp2_ddp_tag_reserve(struct cxgbei_ulp2_ddp_info *ddp,
 		}
 	}
 	if (rv) {
-		ddp_log_info("xferlen %u, gl %u, npods %u NO DDP.\n",
+		CTR3(KTR_CXGBE, "xferlen %u, gl %u, npods %u NO DDP.\n",
 			      gl->length, gl->nelem, npods);
 		return rv;
 	}
 
 	tag = cxgbei_ulp2_ddp_tag_base(idx, ddp, tformat, sw_tag);
-	ddp_log_debug("%s: sw_tag:0x%x idx:0x%x tag:0x%x\n",
+	CTR4(KTR_CXGBE, "%s: sw_tag:0x%x idx:0x%x tag:0x%x\n",
 			__func__, sw_tag, idx, tag);
 
 	hdr.rsvd = 0;
@@ -476,34 +466,34 @@ cxgbei_ulp2_ddp_tag_release(struct cxgbei_ulp2_ddp_info *ddp, u32 tag,
 	u32 idx;
 
 	if (!ddp) {
-		ddp_log_error("release ddp tag 0x%x, ddp NULL.\n", tag);
+		CTR2(KTR_CXGBE, "%s:release ddp tag 0x%x, ddp NULL.\n",
+				__func__, tag);
 		return;
 	}
-	 if (!isock) {
-		ddp_log_error("isock is NULL\n");
+	 if (!isock)
 		return;
-	}
 
 	idx = (tag >> IPPOD_IDX_SHIFT) & ddp->idx_mask;
-	ddp_log_debug("tag:0x%x idx:0x%x nppods:0x%x\n",
+	CTR3(KTR_CXGBE, "tag:0x%x idx:0x%x nppods:0x%x\n",
 			tag, idx, ddp->nppods);
 	if (idx < ddp->nppods) {
 		struct cxgbei_ulp2_gather_list *gl = ddp->gl_map[idx];
 		unsigned int npods;
 
 		if (!gl || !gl->nelem) {
-			ddp_log_error("release 0x%x, idx 0x%x, gl 0x%p, %u.\n",
-				      tag, idx, gl, gl ? gl->nelem : 0);
+			CTR4(KTR_CXGBE,
+				"release 0x%x, idx 0x%x, gl 0x%p, %u.\n",
+				tag, idx, gl, gl ? gl->nelem : 0);
 			return;
 		}
 		npods = (gl->nelem + IPPOD_PAGES_MAX - 1) >> IPPOD_PAGES_SHIFT;
-		ddp_log_debug("ddp tag 0x%x, release idx 0x%x, npods %u.\n",
+		CTR3(KTR_CXGBE, "ddp tag 0x%x, release idx 0x%x, npods %u.\n",
 			      tag, idx, npods);
 		ddp->ddp_clear_map(ddp, gl, tag, idx, npods, isock);
 		ddp_unmark_entries(ddp, idx, npods);
 		cxgbei_ulp2_ddp_release_gl(gl, ddp->tdev);
 	} else
-		ddp_log_error("ddp tag 0x%x, idx 0x%x > max 0x%x.\n",
+		CTR3(KTR_CXGBE, "ddp tag 0x%x, idx 0x%x > max 0x%x.\n",
 			      tag, idx, ddp->nppods);
 }
 
@@ -534,7 +524,7 @@ cxgbei_ulp2_adapter_ddp_info(struct cxgbei_ulp2_ddp_info *ddp,
 	tformat->rsvd_shift = IPPOD_IDX_SHIFT;
 	tformat->rsvd_mask = (1 << tformat->rsvd_bits) - 1;
 
-	ddp_log_info("tag format: sw %u, rsvd %u,%u, mask 0x%x.\n",
+	CTR4(KTR_CXGBE, "tag format: sw %u, rsvd %u,%u, mask 0x%x.\n",
 		      tformat->sw_bits, tformat->rsvd_bits,
 		      tformat->rsvd_shift, tformat->rsvd_mask);
 
@@ -542,7 +532,7 @@ cxgbei_ulp2_adapter_ddp_info(struct cxgbei_ulp2_ddp_info *ddp,
 			ddp->max_txsz - ISCSI_PDU_NONPAYLOAD_LEN);
 	*rxsz = min(ULP2_MAX_PDU_PAYLOAD,
 			ddp->max_rxsz - ISCSI_PDU_NONPAYLOAD_LEN);
-	ddp_log_info("max payload size: %u/%u, %u/%u.\n",
+	CTR4(KTR_CXGBE, "max payload size: %u/%u, %u/%u.\n",
 		     *txsz, ddp->max_txsz, *rxsz, ddp->max_rxsz);
 	return 0;
 }
@@ -559,12 +549,10 @@ cxgbei_ulp2_ddp_cleanup(struct cxgbei_ulp2_ddp_info **ddp_pp)
 	int i = 0;
 	struct cxgbei_ulp2_ddp_info *ddp = *ddp_pp;
 
-	if (!ddp) {
-		ddp_log_error("%s: ddp NULL.\n", __func__);
+	if (!ddp)
 		return;
-	}
 
-	ddp_log_info("tdev, release ddp 0x%p, ref %d.\n",
+	CTR2(KTR_CXGBE, "tdev, release ddp 0x%p, ref %d.\n",
 			ddp, atomic_load_acq_int(&ddp->refcnt));
 
 	if (ddp && (cxgbei_counter_dec_and_read(&ddp->refcnt) == 0)) {
@@ -574,7 +562,8 @@ cxgbei_ulp2_ddp_cleanup(struct cxgbei_ulp2_ddp_info **ddp_pp)
 			if (gl) {
 				int npods = (gl->nelem + IPPOD_PAGES_MAX - 1)
 						>> IPPOD_PAGES_SHIFT;
-				ddp_log_debug("tdev, ddp %d + %d.\n", i, npods);
+				CTR2(KTR_CXGBE,
+					"tdev, ddp %d + %d.\n", i, npods);
 				free(gl, M_DEVBUF);
 				i += npods;
 			} else
@@ -603,20 +592,20 @@ ddp_init(void *tdev,
 	int i, rc;
 
 	if (uinfo->ulimit <= uinfo->llimit) {
-		ddp_log_warn("tdev, ddp 0x%x >= 0x%x.\n",
-			uinfo->llimit, uinfo->ulimit);
+		printf("%s: tdev, ddp 0x%x >= 0x%x.\n",
+			__func__, uinfo->llimit, uinfo->ulimit);
 		return;
 	}
 	if (ddp) {
 		atomic_add_acq_int(&ddp->refcnt, 1);
-		ddp_log_warn("tdev, ddp 0x%p already set up, %d.\n",
+		CTR2(KTR_CXGBE, "tdev, ddp 0x%p already set up, %d.\n",
 				ddp, atomic_load_acq_int(&ddp->refcnt));
 		return;
 	}
 
 	ppmax = (uinfo->ulimit - uinfo->llimit + 1) >> IPPOD_SIZE_SHIFT;
 	if (ppmax <= 1024) {
-		ddp_log_warn("tdev, ddp 0x%x ~ 0x%x, nppod %u < 1K.\n",
+		CTR3(KTR_CXGBE, "tdev, ddp 0x%x ~ 0x%x, nppod %u < 1K.\n",
 			uinfo->llimit, uinfo->ulimit, ppmax);
 		return;
 	}
@@ -630,7 +619,7 @@ ddp_init(void *tdev,
 			ppmax * (sizeof(struct cxgbei_ulp2_gather_list *) +
 			sizeof(struct mbuf*)));
 	if (!ddp) {
-		ddp_log_info("unable to alloc ddp 0x%d, ddp disabled.\n",
+		CTR1(KTR_CXGBE, "unable to alloc ddp 0x%d, ddp disabled.\n",
 			     ppmax);
 		return;
 	}
@@ -648,8 +637,8 @@ ddp_init(void *tdev,
 	/* dma_tag create */
 	rc = ulp2_dma_tag_create(ddp);
 	if (rc) {
-		ddp_log_info("unable to alloc ddp 0x%d, ddp disabled.\n",
-			     ppmax);
+		printf("%s: unable to alloc ddp 0x%d, ddp disabled.\n",
+			     __func__, ppmax);
 		return;
 	}
 
@@ -664,7 +653,8 @@ ddp_init(void *tdev,
 	ddp->idx_mask = (1 << bits) - 1;
 	ddp->rsvd_tag_mask = (1 << (bits + IPPOD_IDX_SHIFT)) - 1;
 
-	ddp_log_info("gl map 0x%p, idx_last %u.\n", ddp->gl_map, ddp->idx_last);
+	CTR2(KTR_CXGBE,
+		"gl map 0x%p, idx_last %u.\n", ddp->gl_map, ddp->idx_last);
 	uinfo->tagmask = ddp->idx_mask << IPPOD_IDX_SHIFT;
 	for (i = 0; i < DDP_PGIDX_MAX; i++)
 		uinfo->pgsz_factor[i] = ddp_page_order[i];
@@ -696,7 +686,7 @@ cxgbei_ulp2_ddp_init(void *tdev,
 
 		if (page_idx == DDP_PGIDX_MAX) {
 			if (cxgbei_ulp2_ddp_adjust_page_table()) {
-				ddp_log_info("PAGE_SIZE %x, ddp disabled.\n",
+				CTR1(KTR_CXGBE, "PAGE_SIZE %x, ddp disabled.\n",
 						PAGE_SIZE);
 				return;
 			}
