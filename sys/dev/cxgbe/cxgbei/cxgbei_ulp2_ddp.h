@@ -27,8 +27,8 @@
  * SUCH DAMAGE.
  */
 
-#ifndef __CXGBI_ULP2_DDP_H__
-#define __CXGBI_ULP2_DDP_H__
+#ifndef __CXGBEI_ULP2_DDP_H__
+#define __CXGBEI_ULP2_DDP_H__
 
 #include <sys/malloc.h>
 #include <sys/sglist.h>
@@ -67,8 +67,8 @@ typedef struct cxgbei_ulp2_tag_format {
 	uint32_t rsvd_mask;
 }cxgbei_ulp2_tag_format;
 
-#define CHISCSI_PAGE_MASK   (~(PAGE_SIZE-1))
-#define DDP_THRESHOLD	2048
+#define CXGBEI_PAGE_MASK	(~(PAGE_SIZE-1))
+#define DDP_THRESHOLD		2048
 
 /*
  * cxgbei ddp tag are 32 bits, it consists of reserved bits used by h/w and
@@ -131,49 +131,12 @@ cxgbei_ulp2_set_non_ddp_tag(struct cxgbei_ulp2_tag_format *tformat,
         return sw_tag | (1 << (rsvd_bits - 1)) ;
 }
 
-/**
- * cxgbei_ulp2_tag_rsvd_bits - get the reserved bits used by the h/w
- * @tformat: tag format information
- * @tag: tag to be checked
- *
- * return the reserved bits in the tag
- */
-static inline uint32_t
-cxgbei_ulp2_tag_rsvd_bits(struct cxgbei_ulp2_tag_format *tformat,
-				       uint32_t tag)
-{
-	if (cxgbei_ulp2_is_ddp_tag(tformat, tag))
-		return (tag >> tformat->rsvd_shift) & tformat->rsvd_mask;
-	return 0;
-}
-
-/**
- * cxgbei_ulp2_tag_nonrsvd_bits - get the non-reserved bits used by the s/w
- * @tformat: tag format information
- * @tag: tag to be checked
- *
- * return the non-reserved bits in the tag.
- */
-static inline uint32_t
-cxgbei_ulp2_tag_nonrsvd_bits(struct cxgbei_ulp2_tag_format *tformat, uint32_t tag)
-{
-	uint32_t rsvd_bits = tformat->rsvd_bits + tformat->rsvd_shift;
-
-	if (cxgbei_ulp2_is_ddp_tag(tformat, tag)) {
-		return tag >> rsvd_bits;
-	} else{
-		uint32_t v1 = tag & ((1 << (rsvd_bits - 1)) - 1);
-		uint32_t v2 = (tag >> rsvd_bits) << (rsvd_bits - 1);
-		return v2 | v1;
-	}
-}
-
 struct dma_segments {
 	bus_dmamap_t bus_map;
 	bus_addr_t phys_addr;
 };
 /**
- * struct cxgbei_ulp2_gather_list - cxgb3i direct data placement memory
+ * struct cxgbei_ulp2_gather_list - cxgbei direct data placement memory
  *
  * @tag:	ddp tag
  * @length:	total data buffer length
@@ -193,7 +156,6 @@ struct cxgbei_ulp2_gather_list {
 	bus_size_t	mapsize;
 	bus_dmamap_t	bus_map;
 	bus_dma_segment_t	*segments;
-	//struct page	**pages;
 	void **pages;
 	struct dma_segments dma_sg[0];
 };
@@ -343,6 +305,7 @@ cxgbei_ulp2_free_big_mem(void *addr)
 {
 	free(addr, M_TEMP);
 }
+
 int cxgbei_ulp2_ddp_tag_reserve(struct cxgbei_ulp2_ddp_info *,
 			void *, unsigned int ,
 			struct cxgbei_ulp2_tag_format *, uint32_t *,

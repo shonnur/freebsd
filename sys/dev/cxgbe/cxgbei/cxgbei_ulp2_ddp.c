@@ -339,7 +339,7 @@ cxgbei_ulp2_ddp_make_gl_from_iscsi_sgvec
 			 */
 			if ((j && sgoffset) ||
 			    ((i != sgcnt - 1) &&
-			     ((sglen + sgoffset) & ~CHISCSI_PAGE_MASK))){
+			     ((sglen + sgoffset) & ~CXGBEI_PAGE_MASK))){
 				goto error_out;
 			}
 
@@ -668,7 +668,7 @@ ddp_init(void *tdev,
 
 	rc = bus_dmamap_create(ddp->ulp_ddp_tag, 0, &ddp->ulp_ddp_map);
 	if (rc != 0) {
-		printf("bus_dmamap_Create failed\n");
+		printf("%s: bus_dmamap_Create failed\n", __func__);
 		return;
 	}
 }
