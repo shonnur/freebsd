@@ -4,7 +4,7 @@
  *
  * Chelsio T5xx iSCSI driver
  *
- * Written by: Sreenivasa Honnur <shonnur@chelsio.com> 
+ * Written by: Sreenivasa Honnur <shonnur@chelsio.com>
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -249,9 +249,9 @@ t4_ddp_set_map(struct cxgbei_ulp2_ddp_info *ddp,
 	toep = tp->t_toe;
 
 	/*
- 	 * on T4, if we use a mix of IMMD and DSGL with ULP_MEM_WRITE,
- 	 * the order would not be garanteed, so we will stick with IMMD
- 	 */
+	 * on T4, if we use a mix of IMMD and DSGL with ULP_MEM_WRITE,
+	 * the order would not be garanteed, so we will stick with IMMD
+	 */
 	gl->tid = toep->tid;
 	gl->port_id = toep->port->port_id;
 	gl->egress_dev = (void *)toep->port->ifp;

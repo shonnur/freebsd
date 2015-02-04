@@ -4,7 +4,7 @@ To enable offload support on Chelsion HW add below lines in /boot/loader.conf
 #cat /boot/loader.conf
 hw.cxgbe.config_file="uwire"
 hw.cxgbe.iscsicaps_allowed=0xf
- 
+
 Loading cxgbe driver and enabling TOE on the interfaces. Add below lines in /etc/rc.conf
 #cat /etc/rc.conf
 kld_list="if_cxgbe t4_tom"

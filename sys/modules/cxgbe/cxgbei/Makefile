@@ -4,10 +4,10 @@ CXGBEI = ${.CURDIR}/../../../dev/cxgbe/cxgbei
 CXGBE = ${.CURDIR}/../../../dev/cxgbe
 .PATH: ${CXGBEI} ${CXGBE}/common
 
-KMOD=	cxgbei	
+KMOD=	cxgbei
 
 SRCS=  cxgbei.c
-SRCS+= 	cxgbei_ulp2_ddp.c 
+SRCS+= cxgbei_ulp2_ddp.c
 SRCS+=  icl_cxgbei.c
 SRCS+=  bus_if.h
 SRCS+=  device_if.h
