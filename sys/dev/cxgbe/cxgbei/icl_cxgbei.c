@@ -83,6 +83,7 @@ static uma_zone_t icl_pdu_zone;
 static uma_zone_t icl_transfer_zone;
 
 static volatile u_int	icl_ncons;
+//#define RECV_THREAD /* unused code, to be removed */
 
 #define ICL_CONN_LOCK(X)		mtx_lock(X->ic_lock)
 #define ICL_CONN_UNLOCK(X)		mtx_unlock(X->ic_lock)
@@ -135,6 +136,7 @@ DEFINE_CLASS(icl_cxgbei, icl_cxgbei_methods, sizeof(struct icl_conn));
  */
 static void	icl_conn_close(struct icl_conn *ic);
 
+#ifdef RECV_THREAD
 static void
 icl_conn_fail(struct icl_conn *ic)
 {
@@ -147,7 +149,6 @@ icl_conn_fail(struct icl_conn *ic)
 	ic->ic_socket->so_error = EDOOFUS;
 	(ic->ic_error)(ic);
 }
-
 static struct mbuf *
 icl_conn_receive(struct icl_conn *ic, size_t len)
 {
@@ -176,6 +177,7 @@ printf("%s:%d ENTRY\n", __func__, __LINE__);
 
 	return (m);
 }
+#endif
 
 struct icl_pdu *
 icl_conn_new_empty_pdu(struct icl_conn *ic, int flags);
@@ -195,6 +197,7 @@ icl_conn_new_empty_pdu(struct icl_conn *ic, int flags) //REQUIRED
 #endif
 		return (NULL);
 	}
+	//printf("%s: allocated pdu:%p\n", __func__, ip);
 
 	ip->ip_conn = ic;
 
@@ -237,6 +240,7 @@ icl_cxgbei_conn_new_pdu(struct icl_conn *ic, int flags) //REQUIRED
 	ip = icl_conn_new_empty_pdu(ic, flags);
 	if (ip == NULL)
 		return (NULL);
+	//printf("%s: allocated ip:%p\n", __func__, ip);
 
 	ip->ip_bhs_mbuf = m_getm2(NULL, sizeof(struct iscsi_bhs),
 	    flags, MT_DATA, M_PKTHDR);
@@ -252,12 +256,14 @@ icl_cxgbei_conn_new_pdu(struct icl_conn *ic, int flags) //REQUIRED
 	return (ip);
 }
 
+#ifdef RECV_THREAD
 static int
 icl_pdu_ahs_length(const struct icl_pdu *request)
 {
 
 	return (request->ip_bhs->bhs_total_ahs_len * 4);
 }
+#endif
 
 static size_t
 icl_pdu_data_segment_length(const struct icl_pdu *request) //REQUIRED
@@ -316,7 +322,7 @@ icl_conn_build_tasktag(struct icl_conn *ic, uint32_t tag)
 	return tag;
 }
 
-#if 1
+#ifdef RECV_THREAD
 static int
 icl_pdu_receive_bhs(struct icl_pdu *request, size_t *availablep)
 {
@@ -399,9 +405,7 @@ printf("%s:%d ENTRY\n", __func__, __LINE__);
 
 	return (len);
 }
-#endif
 
-#if 1
 static int
 icl_pdu_receive_data_segment(struct icl_pdu *request,
     size_t *availablep, bool *more_neededp)
@@ -472,9 +476,6 @@ printf("%s:%d ENTRY\n", __func__, __LINE__);
 	return (0);
 }
 
-#endif
-
-#if 1
 /*
  * Somewhat contrary to the name, this attempts to receive only one
  * "part" of PDU at a time; call it repeatedly until it returns non-NULL.
@@ -496,6 +497,7 @@ printf("%s:%d ENTRY\n", __func__, __LINE__);
 		KASSERT(ic->ic_receive_pdu == NULL,
 		    ("ic->ic_receive_pdu != NULL"));
 		request = icl_conn_new_empty_pdu(ic, M_NOWAIT);
+	//printf("%s:%d request:%p\n", __func__, __LINE__, request);
 		if (request == NULL) {
 			ICL_DEBUG("failed to allocate PDU; "
 			    "dropping connection");
@@ -740,7 +742,6 @@ static int
 icl_soupcall_send(struct socket *so, void *arg, int waitflag)
 {
 	struct icl_conn *ic;
-	printf("%s: \n", __func__);
 
 	if (!sowriteable(so))
 		return (SU_OK);
@@ -953,6 +954,7 @@ icl_conn_start(struct icl_conn *ic) //REQUIRED
 	/*
 	 * Start threads.
 	 */
+#ifdef RECV_THREAD
 	error = kthread_add(icl_receive_thread, ic, NULL, NULL, 0, 0, "%srx",
 	    ic->ic_name);
 	if (error != 0) {
@@ -960,6 +962,7 @@ icl_conn_start(struct icl_conn *ic) //REQUIRED
 		icl_conn_close(ic);
 		return (error);
 	}
+#endif
 
 	/*
 	 * Register socket upcall, to get notified about incoming PDUs

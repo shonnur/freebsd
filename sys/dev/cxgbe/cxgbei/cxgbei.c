@@ -832,6 +832,9 @@ process_rx_data_ddp(struct socket *sk, void *m)
         unsigned int val, pdulen;
         iscsi_socket *isock = (iscsi_socket *)(sk)->so_emuldata;
 
+        if (isock == NULL)
+		return;
+
 	if (!isock->mbuf_ulp_lhdr) {
 		panic("%s: tid 0x%x, rcv RX_DATA_DDP w/o pdu header.\n",
 				__func__, toep->tid);
@@ -1015,6 +1018,11 @@ t4_ulp_mbuf_push(struct socket *so, struct mbuf *m)
 	struct inpcb *inp = so_sotoinpcb(so);
 	iscsi_socket *isock = (iscsi_socket *)(so)->so_emuldata;;
 
+	if (isock == NULL) {
+		m_freem(m);
+		return EINVAL;
+	}
+
 	/* append mbuf to ULP queue */
 	mtx_lock(&isock->ulp2_writeq.lock);
 	mbufq_tail(&isock->ulp2_writeq, m);
@@ -1083,7 +1091,7 @@ iscsi_cpl_handler_callback(struct tom_data *td, struct socket *sk,
         default:
 		CTR2(KTR_CXGBE, "sk 0x%p, op 0x%x from TOM, NOT supported.\n",
                                 sk, op);
-                break;
+		break;
         }
 }
 
@@ -1345,10 +1353,12 @@ cxgbei_conn_set_ulp_mode(struct socket *so, void *conn)
 	isock->mbuf_ulp_lhdr = NULL;
 	isock->sock = so;
 	isock->s_conn = conn;
+	so->so_emuldata = isock;
+
 	mtx_init(&isock->iscsi_rcv_mbufq.lock,"isock_lock" , NULL, MTX_DEF);	
 	mtx_init(&isock->ulp2_wrq.lock,"ulp2_wrq lock" , NULL, MTX_DEF);	
 	mtx_init(&isock->ulp2_writeq.lock,"ulp2_writeq lock" , NULL, MTX_DEF);	
-	so->so_emuldata = isock;
+
 	CTR6(KTR_CXGBE,
 		"%s: sc:%p toep:%p iscsi_start:0x%x iscsi_size:0x%x caps:%d.\n",
 		__func__, sc, toep, sc->vres.iscsi.start,
@@ -1402,16 +1412,47 @@ cxgbei_conn_close(struct socket *so)
 {
 	iscsi_socket *isock = NULL;
 	isock = (iscsi_socket *)(so)->so_emuldata;
-	offload_device *odev = isock->s_odev;
-	struct toedev *tdev = odev->d_tdev;
-	struct adapter *sc = (struct adapter *)tdev->tod_softc;
+        //offload_device *odev = isock->s_odev;
+	//struct toedev *tdev = odev->d_tdev;
+	//struct adapter *sc = (struct adapter *)tdev->tod_softc;
+	struct mbuf *m;
+	struct ulp_mbuf_cb *cb;
+	struct icl_pdu *req;
 
 	so->so_emuldata = NULL;
 
-	/* de-register ULP CPL handlers with TOM */
-	t4_unregister_cpl_handler_with_tom(sc);
+	/* free isock Qs */
+	while ((m = mbufq_dequeue(&isock->iscsi_rcv_mbufq)) != NULL)
+		m_freem(m);
+
+	while ((m = mbufq_dequeue(&isock->ulp2_writeq)) != NULL)
+		m_freem(m);
+
+        mtx_lock(&isock->ulp2_wrq.lock);
+	while ((m = mbufq_dequeue(&isock->ulp2_wrq)) != NULL) {
+		cb = find_ulp_mbuf_cb(m);
+		if (cb && isock && cb->pdu) {
+			req = (struct icl_pdu *)cb->pdu;
+			req->ip_bhs_mbuf = NULL;
+			icl_pdu_free(req);
+		}
+		m_freem(m);
+	}
+        mtx_unlock(&isock->ulp2_wrq.lock);
+
+	if (mtx_initialized(&isock->iscsi_rcv_mbufq.lock))
+		mtx_destroy(&isock->iscsi_rcv_mbufq.lock);
+
+	if (mtx_initialized(&isock->ulp2_wrq.lock))
+		mtx_destroy(&isock->ulp2_wrq.lock);
+
+	if (mtx_initialized(&isock->ulp2_writeq.lock))
+		mtx_destroy(&isock->ulp2_writeq.lock);
 
 	free(isock, M_CXGBE);
+
+	///* de-register ULP CPL handlers with TOM */
+	//t4_unregister_cpl_handler_with_tom(sc);
 	return 0;
 }
 
