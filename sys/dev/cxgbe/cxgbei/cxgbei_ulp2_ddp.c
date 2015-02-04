@@ -26,6 +26,7 @@
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
  */
+
 #include "opt_inet.h"
 #include <sys/types.h>
 #include <sys/module.h>
@@ -112,7 +113,7 @@ ulp2_dma_tag_create(struct cxgbei_ulp2_ddp_info *ddp)
 /*
  * iSCSI Direct Data Placement
  *
- * T3/4 ulp2 h/w can directly place the iSCSI Data-In or Data-Out PDU's
+ * T4/5 ulp2 h/w can directly place the iSCSI Data-In or Data-Out PDU's
  * payload into pre-posted final destination host-memory buffers based on the
  * Initiator Task Tag (ITT) in Data-In or Target Task Tag (TTT) in Data-Out
  * PDUs.
@@ -279,7 +280,7 @@ unmap:
 /**
  * cxgbei_ulp2_ddp_make_gl_from_iscsi_sgvec - build ddp page buffer list
  * @xferlen: total buffer length
- * @sgl: page buffer scatter-gather list (struct cxgbei_sgl_t)
+ * @sgl: page buffer scatter-gather list (struct cxgbei_sgl)
  * @sgcnt: # of page buffers
  * @gfp: allocation mode
  *
@@ -292,12 +293,12 @@ unmap:
  */
 struct cxgbei_ulp2_gather_list *
 cxgbei_ulp2_ddp_make_gl_from_iscsi_sgvec
-			(unsigned int xferlen, cxgbei_sgl_t *sgl,
+			(unsigned int xferlen, cxgbei_sgl *sgl,
 			 unsigned int sgcnt, void *tdev,
 			 int gfp)
 {
 	struct cxgbei_ulp2_gather_list *gl;
-	cxgbei_sgl_t *sg = sgl;
+	cxgbei_sgl *sg = sgl;
 	void *sgpage = (void *)((u64)sg->sg_addr & (~PAGE_MASK));
 	unsigned int sglen = sg->sg_length;
 	unsigned int sgoffset = (u64)sg->sg_addr & PAGE_MASK;
@@ -465,12 +466,12 @@ cxgbei_ulp2_ddp_tag_release(struct cxgbei_ulp2_ddp_info *ddp, u32 tag,
 {
 	u32 idx;
 
-	if (!ddp) {
+	if (ddp == NULL) {
 		CTR2(KTR_CXGBE, "%s:release ddp tag 0x%x, ddp NULL.\n",
 				__func__, tag);
 		return;
 	}
-	 if (!isock)
+	 if (isock == NULL)
 		return;
 
 	idx = (tag >> IPPOD_IDX_SHIFT) & ddp->idx_mask;
@@ -512,10 +513,10 @@ cxgbei_ulp2_adapter_ddp_info(struct cxgbei_ulp2_ddp_info *ddp,
 {
 	unsigned char idx_bits;
 
-	if (!tformat)
+	if (tformat == NULL)
 		return EINVAL;
 
-	if (!ddp)
+	if (ddp == NULL)
 		return EINVAL;
 
 	idx_bits = 32 - tformat->sw_bits;
@@ -549,7 +550,7 @@ cxgbei_ulp2_ddp_cleanup(struct cxgbei_ulp2_ddp_info **ddp_pp)
 	int i = 0;
 	struct cxgbei_ulp2_ddp_info *ddp = *ddp_pp;
 
-	if (!ddp)
+	if (ddp == NULL)
 		return;
 
 	CTR2(KTR_CXGBE, "tdev, release ddp 0x%p, ref %d.\n",
@@ -618,7 +619,7 @@ ddp_init(void *tdev,
 	ddp = cxgbei_ulp2_alloc_big_mem(sizeof(struct cxgbei_ulp2_ddp_info) +
 			ppmax * (sizeof(struct cxgbei_ulp2_gather_list *) +
 			sizeof(struct mbuf*)));
-	if (!ddp) {
+	if (ddp == NULL) {
 		CTR1(KTR_CXGBE, "unable to alloc ddp 0x%d, ddp disabled.\n",
 			     ppmax);
 		return;

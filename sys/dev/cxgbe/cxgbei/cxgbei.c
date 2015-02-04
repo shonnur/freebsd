@@ -27,7 +27,9 @@
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
  */
+
 #include "opt_inet.h"
+
 #include <sys/types.h>
 #include <sys/module.h>
 #include <sys/systm.h>
@@ -91,7 +93,8 @@ struct icl_pdu * icl_conn_new_empty_pdu(struct icl_conn *, int );
 void icl_pdu_free(struct icl_pdu *);
 
 /* mbuf_tag management functions */
-struct ulp_mbuf_cb * get_ulp_mbuf_cb(struct mbuf *m)
+struct ulp_mbuf_cb *
+get_ulp_mbuf_cb(struct mbuf *m)
 {
 	struct m_tag    *mtag = NULL;
 
@@ -107,7 +110,8 @@ struct ulp_mbuf_cb * get_ulp_mbuf_cb(struct mbuf *m)
 	return ((struct ulp_mbuf_cb *)(mtag + 1));
 }
 
-static struct ulp_mbuf_cb * find_ulp_mbuf_cb(struct mbuf *m)
+static struct ulp_mbuf_cb *
+find_ulp_mbuf_cb(struct mbuf *m)
 {
         struct m_tag    *mtag = NULL;
 
@@ -387,7 +391,7 @@ offload_device_remove()
 }
 
 static int
-cxgbei_map_sg(cxgbei_sgl_t *sgl, struct ccb_scsiio *csio)
+cxgbei_map_sg(cxgbei_sgl *sgl, struct ccb_scsiio *csio)
 {
 	unsigned int data_len = csio->dxfer_len;
 	unsigned int sgoffset = (uint64_t)csio->data_ptr & PAGE_MASK;
@@ -422,7 +426,7 @@ cxgbei_map_sg(cxgbei_sgl_t *sgl, struct ccb_scsiio *csio)
 }
 
 static int
-cxgbei_map_sg_tgt(cxgbei_sgl_t *sgl, union ctl_io *io)
+cxgbei_map_sg_tgt(cxgbei_sgl *sgl, union ctl_io *io)
 {
         unsigned int data_len, sgoffset, nsge;
         unsigned char *sgaddr;
@@ -479,7 +483,7 @@ cxgbei_map_sg_tgt(cxgbei_sgl_t *sgl, union ctl_io *io)
 
 static int
 t4_sk_ddp_tag_reserve(iscsi_socket *isock, unsigned int xferlen,
-                                cxgbei_sgl_t *sgl, unsigned int sgcnt,
+                                cxgbei_sgl *sgl, unsigned int sgcnt,
                                 unsigned int *ddp_tag)
 {
         offload_device *odev = isock->s_odev;
@@ -518,14 +522,14 @@ cxgbei_task_reserve_itt(struct icl_conn *ic, void **prv,
 {
 	int xferlen = scmd->dxfer_len;
 	cxgbei_task_data *tdata = NULL;
-	cxgbei_sgl_t *sge = NULL;
+	cxgbei_sgl *sge = NULL;
 	struct socket *so = ic->ic_socket;
         iscsi_socket *isock = (iscsi_socket *)(so)->so_emuldata;
 	int err = -1;
         offload_device *odev = isock->s_odev;
 
 	tdata = (cxgbei_task_data *)*prv;
-	if (!xferlen || (tdata == NULL)) {
+	if ((xferlen == 0) || (tdata == NULL)) {
 		goto out;
 	}
 	if (xferlen < DDP_THRESHOLD)
@@ -570,11 +574,11 @@ cxgbei_task_reserve_ttt(struct icl_conn *ic, void **prv, union ctl_io *io,
 	cxgbei_task_data *tdata = NULL;
         offload_device *odev = isock->s_odev;
 	int xferlen, err = -1;
-	cxgbei_sgl_t *sge = NULL;
+	cxgbei_sgl *sge = NULL;
 
 	xferlen = (io->scsiio.kern_data_len - io->scsiio.ext_data_filled);
 	tdata = (cxgbei_task_data *)*prv;
-	if (!xferlen || (tdata == NULL))
+	if ((xferlen == 0) || (tdata == NULL))
 		goto out;
 	if (xferlen < DDP_THRESHOLD)
 		goto out;
@@ -623,7 +627,7 @@ t4_ddp_init(struct ifnet *dev, struct toedev *tdev)
 	uinfo.max_rxsz = uinfo.max_txsz =
 				G_MAXRXDATA(t4_read_reg(sc, A_TP_PARA_REG2));
 
-	if (!sc->vres.iscsi.size) {
+	if (sc->vres.iscsi.size == 0) {
 		printf("%s: iSCSI capabilities not enabled.\n", __func__);
 		return NULL;
 	}
@@ -706,7 +710,7 @@ process_rx_iscsi_hdr(struct socket *sk, struct mbuf *m)
 
 	/* figure out if this is the pdu header or data */
         cb->ulp_mode = ULP_MODE_ISCSI;
-        if (!isock->mbuf_ulp_lhdr) {
+        if (isock->mbuf_ulp_lhdr == NULL) {
                 iscsi_socket *isock = (iscsi_socket *)(sk)->so_emuldata;
 
                 isock->mbuf_ulp_lhdr = lmbuf = m;
@@ -835,7 +839,7 @@ process_rx_data_ddp(struct socket *sk, void *m)
         if (isock == NULL)
 		return;
 
-	if (!isock->mbuf_ulp_lhdr) {
+	if (isock->mbuf_ulp_lhdr == NULL) {
 		panic("%s: tid 0x%x, rcv RX_DATA_DDP w/o pdu header.\n",
 				__func__, toep->tid);
 		return;

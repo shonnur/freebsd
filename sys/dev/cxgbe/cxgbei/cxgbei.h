@@ -76,10 +76,10 @@ typedef struct cxgbei_sgl {
         void    *sg_dma_addr;
         size_t  sg_offset;
         size_t  sg_length;
-} cxgbei_sgl_t;
+} cxgbei_sgl;
 
 #define cxgbei_scsi_for_each_sg(_sgl, _sgel, _n, _i)      \
-        for (_i = 0, _sgel = (cxgbei_sgl_t*) (_sgl); _i < _n; _i++, \
+        for (_i = 0, _sgel = (cxgbei_sgl*) (_sgl); _i < _n; _i++, \
                         _sgel++)
 #define sg_dma_addr(_sgel)      _sgel->sg_dma_addr
 #define sg_virt(_sgel)          _sgel->sg_addr
@@ -128,7 +128,7 @@ struct ulp_mbuf_cb {
 
 /* private data for eack scsi task */
 typedef struct cxgbei_task_data {
-	cxgbei_sgl_t sgl[256];
+	cxgbei_sgl sgl[256];
 	unsigned int	nsge;
 	unsigned int	sc_ddp_tag;
 }cxgbei_task_data;
@@ -148,7 +148,7 @@ enum {
 #define ODEV_FLAG_ULP_ENABLED   \
         (ODEV_FLAG_ULP_CRC_ENABLED | ODEV_FLAG_ULP_DDP_ENABLED)
 
-struct ulp_mbuf_cb * get_ulp_mbuf_cb(struct mbuf *m);
+struct ulp_mbuf_cb * get_ulp_mbuf_cb(struct mbuf *);
 int cxgbei_conn_set_ulp_mode(struct socket *, void *);
 int cxgbei_conn_close(struct socket *);
 void cxgbei_conn_task_reserve_itt(void *, void **, void *, unsigned int *);

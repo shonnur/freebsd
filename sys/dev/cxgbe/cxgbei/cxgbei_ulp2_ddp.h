@@ -51,7 +51,7 @@ struct ulp_iscsi_info {
 	unsigned int    max_txsz;
 };
 
-/**
+/*
  * struct cxgbei_ulp2_tag_format - cxgb3i ulp tag format for an iscsi entity
  *
  * @sw_bits:	# of bits used by iscsi software layer
@@ -80,7 +80,7 @@ typedef struct cxgbei_ulp2_tag_format {
  * 	if the bit is 0, the tag is a valid ddp tag
  */
 
-/**
+/*
  * cxgbei_ulp2_is_ddp_tag - check if a given tag is a hw/ddp tag
  * @tformat: tag format information
  * @tag: tag to be checked
@@ -93,7 +93,7 @@ cxgbei_ulp2_is_ddp_tag(struct cxgbei_ulp2_tag_format *tformat, uint32_t tag)
 	return !(tag & (1 << (tformat->rsvd_bits + tformat->rsvd_shift - 1)));
 }
 
-/**
+/*
  * cxgbei_ulp2_sw_tag_usable - check if s/w tag has enough bits left for hw bits
  * @tformat: tag format information
  * @sw_tag: s/w tag to be checked
@@ -110,7 +110,7 @@ cxgbei_ulp2_sw_tag_usable(struct cxgbei_ulp2_tag_format *tformat,
 	return !sw_tag;
 }
 
-/**
+/*
  * cxgbei_ulp2_set_non_ddp_tag - mark a given s/w tag as an invalid ddp tag
  * @tformat: tag format information
  * @sw_tag: s/w tag to be checked
@@ -135,7 +135,7 @@ struct dma_segments {
 	bus_dmamap_t bus_map;
 	bus_addr_t phys_addr;
 };
-/**
+/*
  * struct cxgbei_ulp2_gather_list - cxgbei direct data placement memory
  *
  * @tag:	ddp tag
@@ -161,7 +161,7 @@ struct cxgbei_ulp2_gather_list {
 };
 
 struct cxgbei_ulp2_pagepod_hdr;
-/**
+/*
  * struct cxgbei_ulp2_ddp_info - direct data placement for pdu payload
  *
  * @list:	list head to link elements
@@ -321,7 +321,7 @@ struct cxgbei_ulp2_gather_list *cxgbei_ulp2_ddp_make_gl(unsigned int ,
 
 struct cxgbei_ulp2_gather_list *cxgbei_ulp2_ddp_make_gl_from_iscsi_sgvec(
 				unsigned int,
-				cxgbei_sgl_t *,
+				cxgbei_sgl *,
 				unsigned int,
 				void *,
 				int);

@@ -83,7 +83,6 @@ static uma_zone_t icl_pdu_zone;
 static uma_zone_t icl_transfer_zone;
 
 static volatile u_int	icl_ncons;
-//#define RECV_THREAD /* unused code, to be removed */
 
 #define ICL_CONN_LOCK(X)		mtx_lock(X->ic_lock)
 #define ICL_CONN_UNLOCK(X)		mtx_unlock(X->ic_lock)
@@ -136,49 +135,6 @@ DEFINE_CLASS(icl_cxgbei, icl_cxgbei_methods, sizeof(struct icl_conn));
  */
 static void	icl_conn_close(struct icl_conn *ic);
 
-#ifdef RECV_THREAD
-static void
-icl_conn_fail(struct icl_conn *ic)
-{
-	if (ic->ic_socket == NULL)
-		return;
-
-	/*
-	 * XXX
-	 */
-	ic->ic_socket->so_error = EDOOFUS;
-	(ic->ic_error)(ic);
-}
-static struct mbuf *
-icl_conn_receive(struct icl_conn *ic, size_t len)
-{
-	struct uio uio;
-	struct socket *so;
-	struct mbuf *m;
-	int error, flags;
-printf("%s:%d ENTRY\n", __func__, __LINE__);
-
-	so = ic->ic_socket;
-
-	memset(&uio, 0, sizeof(uio));
-	uio.uio_resid = len;
-
-	flags = MSG_DONTWAIT;
-	error = soreceive(so, NULL, &uio, &m, NULL, &flags);
-	if (error != 0) {
-		ICL_DEBUG("soreceive error %d", error);
-		return (NULL);
-	}
-	if (uio.uio_resid != 0) {
-		m_freem(m);
-		ICL_DEBUG("short read");
-		return (NULL);
-	}
-
-	return (m);
-}
-#endif
-
 struct icl_pdu *
 icl_conn_new_empty_pdu(struct icl_conn *ic, int flags);
 struct icl_pdu *
@@ -197,7 +153,6 @@ icl_conn_new_empty_pdu(struct icl_conn *ic, int flags) //REQUIRED
 #endif
 		return (NULL);
 	}
-	//printf("%s: allocated pdu:%p\n", __func__, ip);
 
 	ip->ip_conn = ic;
 
@@ -240,7 +195,6 @@ icl_cxgbei_conn_new_pdu(struct icl_conn *ic, int flags) //REQUIRED
 	ip = icl_conn_new_empty_pdu(ic, flags);
 	if (ip == NULL)
 		return (NULL);
-	//printf("%s: allocated ip:%p\n", __func__, ip);
 
 	ip->ip_bhs_mbuf = m_getm2(NULL, sizeof(struct iscsi_bhs),
 	    flags, MT_DATA, M_PKTHDR);
@@ -255,15 +209,6 @@ icl_cxgbei_conn_new_pdu(struct icl_conn *ic, int flags) //REQUIRED
 
 	return (ip);
 }
-
-#ifdef RECV_THREAD
-static int
-icl_pdu_ahs_length(const struct icl_pdu *request)
-{
-
-	return (request->ip_bhs->bhs_total_ahs_len * 4);
-}
-#endif
 
 static size_t
 icl_pdu_data_segment_length(const struct icl_pdu *request) //REQUIRED
@@ -322,381 +267,10 @@ icl_conn_build_tasktag(struct icl_conn *ic, uint32_t tag)
 	return tag;
 }
 
-#ifdef RECV_THREAD
-static int
-icl_pdu_receive_bhs(struct icl_pdu *request, size_t *availablep)
-{
-	struct mbuf *m;
-
-printf("%s:%d ENTRY\n", __func__, __LINE__);
-	m = icl_conn_receive(request->ip_conn, sizeof(struct iscsi_bhs));
-	if (m == NULL) {
-		ICL_DEBUG("failed to receive BHS");
-		return (-1);
-	}
-
-	request->ip_bhs_mbuf = m_pullup(m, sizeof(struct iscsi_bhs));
-	if (request->ip_bhs_mbuf == NULL) {
-		ICL_WARN("m_pullup failed");
-		return (-1);
-	}
-	request->ip_bhs = mtod(request->ip_bhs_mbuf, struct iscsi_bhs *);
-
-	/*
-	 * XXX: For architectures with strict alignment requirements
-	 * 	we may need to allocate ip_bhs and copy the data into it.
-	 * 	For some reason, though, not doing this doesn't seem
-	 * 	to cause problems; tested on sparc64.
-	 */
-
-	*availablep -= sizeof(struct iscsi_bhs);
-	return (0);
-}
-
-/*
- * Return the number of bytes that should be waiting in the receive socket
- * before icl_pdu_receive_data_segment() gets called.
- */
-static size_t
-icl_pdu_data_segment_receive_len(const struct icl_pdu *request)
-{
-	size_t len;
-
-printf("%s:%d ENTRY\n", __func__, __LINE__);
-	len = icl_pdu_data_segment_length(request);
-	if (len == 0)
-		return (0);
-
-	/*
-	 * Account for the parts of data segment already read from
-	 * the socket buffer.
-	 */
-	KASSERT(len > request->ip_data_len, ("len <= request->ip_data_len"));
-	len -= request->ip_data_len;
-
-	/*
-	 * Don't always wait for the full data segment to be delivered
-	 * to the socket; this might badly affect performance due to
-	 * TCP window scaling.
-	 */
-	if (len > partial_receive_len) {
-#if 0
-		ICL_DEBUG("need %zd bytes of data, limiting to %zd",
-		    len, partial_receive_len));
-#endif
-		len = partial_receive_len;
-
-		return (len);
-	}
-
-	/*
-	 * Account for padding.  Note that due to the way code is written,
-	 * the icl_pdu_receive_data_segment() must always receive padding
-	 * along with the last part of data segment, because it would be
-	 * impossible to tell whether we've already received the full data
-	 * segment including padding, or without it.
-	 */
-	if ((len % 4) != 0)
-		len += 4 - (len % 4);
-
-#if 0
-	ICL_DEBUG("need %zd bytes of data", len));
-#endif
-
-	return (len);
-}
-
-static int
-icl_pdu_receive_data_segment(struct icl_pdu *request,
-    size_t *availablep, bool *more_neededp)
-{
-	struct icl_conn *ic;
-	size_t len, padding = 0;
-	struct mbuf *m;
-
-printf("%s:%d ENTRY\n", __func__, __LINE__);
-	ic = request->ip_conn;
-
-	*more_neededp = false;
-	ic->ic_receive_len = 0;
-
-	len = icl_pdu_data_segment_length(request);
-	if (len == 0)
-		return (0);
-
-	if ((len % 4) != 0)
-		padding = 4 - (len % 4);
-
-	/*
-	 * Account for already received parts of data segment.
-	 */
-	KASSERT(len > request->ip_data_len, ("len <= request->ip_data_len"));
-	len -= request->ip_data_len;
-
-	if (len + padding > *availablep) {
-		/*
-		 * Not enough data in the socket buffer.  Receive as much
-		 * as we can.  Don't receive padding, since, obviously, it's
-		 * not the end of data segment yet.
-		 */
-#if 0
-		ICL_DEBUG("limited from %zd to %zd",
-		    len + padding, *availablep - padding));
-#endif
-		len = *availablep - padding;
-		*more_neededp = true;
-		padding = 0;
-	}
-
-	/*
-	 * Must not try to receive padding without at least one byte
-	 * of actual data segment.
-	 */
-	if (len > 0) {
-		m = icl_conn_receive(request->ip_conn, len + padding);
-		if (m == NULL) {
-			ICL_DEBUG("failed to receive data segment");
-			return (-1);
-		}
-
-		if (request->ip_data_mbuf == NULL)
-			request->ip_data_mbuf = m;
-		else
-			m_cat(request->ip_data_mbuf, m);
-
-		request->ip_data_len += len;
-		*availablep -= len + padding;
-	} else
-		ICL_DEBUG("len 0");
-
-	if (*more_neededp)
-		ic->ic_receive_len =
-		    icl_pdu_data_segment_receive_len(request);
-
-	return (0);
-}
-
-/*
- * Somewhat contrary to the name, this attempts to receive only one
- * "part" of PDU at a time; call it repeatedly until it returns non-NULL.
- */
-static struct icl_pdu *
-icl_conn_receive_pdu(struct icl_conn *ic, size_t *availablep)
-{
-printf("%s:%d ENTRY\n", __func__, __LINE__);
-	struct icl_pdu *request;
-	struct socket *so;
-	size_t len;
-	int error = 0;
-	bool more_needed;
-
-printf("%s:%d ENTRY\n", __func__, __LINE__);
-	so = ic->ic_socket;
-
-	if (ic->ic_receive_state == ICL_CONN_STATE_BHS) {
-		KASSERT(ic->ic_receive_pdu == NULL,
-		    ("ic->ic_receive_pdu != NULL"));
-		request = icl_conn_new_empty_pdu(ic, M_NOWAIT);
-	//printf("%s:%d request:%p\n", __func__, __LINE__, request);
-		if (request == NULL) {
-			ICL_DEBUG("failed to allocate PDU; "
-			    "dropping connection");
-			icl_conn_fail(ic);
-			return (NULL);
-		}
-		ic->ic_receive_pdu = request;
-	} else {
-		KASSERT(ic->ic_receive_pdu != NULL,
-		    ("ic->ic_receive_pdu == NULL"));
-		request = ic->ic_receive_pdu;
-	}
-
-	if (*availablep < ic->ic_receive_len) {
-#if 0
-		ICL_DEBUG("not enough data; need %zd, "
-		    "have %zd", ic->ic_receive_len, *availablep);
-#endif
-		return (NULL);
-	}
-
-	switch (ic->ic_receive_state) {
-	case ICL_CONN_STATE_BHS:
-		//ICL_DEBUG("receiving BHS");
-		error = icl_pdu_receive_bhs(request, availablep);
-		if (error != 0) {
-			ICL_DEBUG("failed to receive BHS; "
-			    "dropping connection");
-			break;
-		}
-
-		/*
-		 * We don't enforce any limit for AHS length;
-		 * its length is stored in 8 bit field.
-		 */
-
-		len = icl_pdu_data_segment_length(request);
-		if (len > ic->ic_max_data_segment_length) {
-			ICL_WARN("received data segment "
-			    "length %zd is larger than negotiated "
-			    "MaxDataSegmentLength %zd; "
-			    "dropping connection",
-			    len, ic->ic_max_data_segment_length);
-			error = EINVAL;
-			break;
-		}
-
-		ic->ic_receive_state = ICL_CONN_STATE_AHS;
-		ic->ic_receive_len = icl_pdu_ahs_length(request);
-		break;
-
-	case ICL_CONN_STATE_AHS:
-		break;
-
-	case ICL_CONN_STATE_HEADER_DIGEST:
-		break;
-
-	case ICL_CONN_STATE_DATA:
-		//ICL_DEBUG("receiving data segment");
-		error = icl_pdu_receive_data_segment(request, availablep,
-		    &more_needed);
-		if (error != 0) {
-			ICL_DEBUG("failed to receive data segment;"
-			    "dropping connection");
-			break;
-		}
-
-		if (more_needed)
-			break;
-
-		ic->ic_receive_state = ICL_CONN_STATE_DATA_DIGEST;
-		if (request->ip_data_len == 0 || ic->ic_data_crc32c == false)
-			ic->ic_receive_len = 0;
-		else
-			ic->ic_receive_len = ISCSI_DATA_DIGEST_SIZE;
-		break;
-	case ICL_CONN_STATE_DATA_DIGEST:
-		break;
-	default:
-		panic("invalid ic_receive_state %d\n", ic->ic_receive_state);
-	}
-
-	if (error != 0) {
-		/*
-		 * Don't free the PDU; it's pointed to by ic->ic_receive_pdu
-		 * and will get freed in icl_conn_close().
-		 */
-		icl_conn_fail(ic);
-	}
-
-	return (NULL);
-}
-
-static void
-icl_conn_receive_pdus(struct icl_conn *ic, size_t available)
-{
-printf("%s:%d ENTRY\n", __func__, __LINE__);
-	struct icl_pdu *response;
-	struct socket *so;
-
-	so = ic->ic_socket;
-
-	/*
-	 * This can never happen; we're careful to only mess with ic->ic_socket
-	 * pointer when the send/receive threads are not running.
-	 */
-	KASSERT(so != NULL, ("NULL socket"));
-
-	for (;;) {
-		if (ic->ic_disconnecting)
-			return;
-
-		if (so->so_error != 0) {
-			ICL_DEBUG("connection error %d; "
-			    "dropping connection", so->so_error);
-			icl_conn_fail(ic);
-			return;
-		}
-
-		/*
-		 * Loop until we have a complete PDU or there is not enough
-		 * data in the socket buffer.
-		 */
-		if (available < ic->ic_receive_len) {
-#if 0
-			ICL_DEBUG("not enough data; have %zd, "
-			    "need %zd", available,
-			    ic->ic_receive_len);
-#endif
-			return;
-		}
-
-		response = icl_conn_receive_pdu(ic, &available);
-		if (response == NULL)
-			continue;
-
-		if (response->ip_ahs_len > 0) {
-			ICL_WARN("received PDU with unsupported "
-			    "AHS; opcode 0x%x; dropping connection",
-			    response->ip_bhs->bhs_opcode);
-			icl_pdu_free(response);
-			icl_conn_fail(ic);
-			return;
-		}
-
-		(ic->ic_receive)(response);
-	}
-}
-
-static void
-icl_receive_thread(void *arg)
-{
-	struct icl_conn *ic;
-	size_t available;
-	struct socket *so;
-
-	ic = arg;
-	so = ic->ic_socket;
-
-	ICL_CONN_LOCK(ic);
-	ic->ic_receive_running = true;
-	ICL_CONN_UNLOCK(ic);
-
-	for (;;) {
-		if (ic->ic_disconnecting) {
-			//ICL_DEBUG("terminating");
-			break;
-		}
-
-		/*
-		 * Set the low watermark, to be checked by
-		 * soreadable() in icl_soupcall_receive()
-		 * to avoid unneccessary wakeups until there
-		 * is enough data received to read the PDU.
-		 */
-		SOCKBUF_LOCK(&so->so_rcv);
-		available = so->so_rcv.sb_cc;
-		if (available < ic->ic_receive_len) {
-			so->so_rcv.sb_lowat = ic->ic_receive_len;
-			cv_wait(&ic->ic_receive_cv, &so->so_rcv.sb_mtx);
-		} else
-			so->so_rcv.sb_lowat = so->so_rcv.sb_hiwat + 1;
-		SOCKBUF_UNLOCK(&so->so_rcv);
-
-		icl_conn_receive_pdus(ic, available);
-	}
-
-	ICL_CONN_LOCK(ic);
-	ic->ic_receive_running = false;
-	ICL_CONN_UNLOCK(ic);
-	kthread_exit();
-}
-#endif
-
 static int
 icl_soupcall_receive(struct socket *so, void *arg, int waitflag)
 {
 	struct icl_conn *ic;
-	printf("%s: \n", __func__);
 
 	if (!soreadable(so))
 		return (SU_OK);
@@ -950,19 +524,6 @@ icl_conn_start(struct icl_conn *ic) //REQUIRED
 		icl_conn_close(ic);
 		return (error);
 	}
-
-	/*
-	 * Start threads.
-	 */
-#ifdef RECV_THREAD
-	error = kthread_add(icl_receive_thread, ic, NULL, NULL, 0, 0, "%srx",
-	    ic->ic_name);
-	if (error != 0) {
-		ICL_WARN("kthread_add(9) failed with error %d", error);
-		icl_conn_close(ic);
-		return (error);
-	}
-#endif
 
 	/*
 	 * Register socket upcall, to get notified about incoming PDUs
