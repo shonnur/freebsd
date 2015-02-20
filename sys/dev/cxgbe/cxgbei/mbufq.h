@@ -90,7 +90,7 @@ mbufq_dequeue(struct mbuf_head *l)
 
 	m = l->head;
 	if (m) {
-		if (m == l->tail) 
+		if (m == l->tail)
 			l->head = l->tail = NULL;
 		else
 			l->head = m->m_nextpkt;
@@ -111,13 +111,11 @@ mbufq_peek(const struct mbuf_head *l)
 static __inline void
 mbufq_append(struct mbuf_head *a, struct mbuf_head *b)
 {
-	if (a->tail) 
+	if (a->tail)
 		a->tail->m_nextpkt = b->head;
 	if (b->tail)
 		a->tail = b->tail;
 	a->qlen += b->qlen;
 	a->qsize += b->qsize;
-	
-	
 }
 #endif  /* CXGB_MBUFQ_H_ */

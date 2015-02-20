@@ -32,28 +32,28 @@
 
 typedef struct iscsi_socket {
 	/* iscsi private */
-        unsigned char   s_flag;
-        unsigned char   s_cpuno;        /* bind to cpuno */
-        unsigned char   s_mode;         /* offload mode */
-        unsigned char   s_txhold;
+	unsigned char   s_flag;
+	unsigned char   s_cpuno;        /* bind to cpuno */
+	unsigned char   s_mode;         /* offload mode */
+	unsigned char   s_txhold;
 
-        unsigned char   s_ddp_pgidx;    /* ddp page selection */
-        unsigned char   s_hcrc_len;
-        unsigned char   s_dcrc_len;
-        unsigned char   filler[1];
+	unsigned char   s_ddp_pgidx;    /* ddp page selection */
+	unsigned char   s_hcrc_len;
+	unsigned char   s_dcrc_len;
+	unsigned char   filler[1];
 
-        unsigned int    s_tid;          /* for debug only */
-        unsigned int    s_tmax;
-        unsigned int    s_rmax;
-        unsigned int    s_mss;
-        void            *s_odev;        /* offload device, if any */
-        void            *s_appdata;     /* upperlayer data pointer */
-        void            *s_private;     /* underlying socket related info. */
-        void            *s_conn;	/* ic_conn pointer */
+	unsigned int    s_tid;          /* for debug only */
+	unsigned int    s_tmax;
+	unsigned int    s_rmax;
+	unsigned int    s_mss;
+	void            *s_odev;        /* offload device, if any */
+	void            *s_appdata;     /* upperlayer data pointer */
+	void            *s_private;     /* underlying socket related info. */
+	void            *s_conn;	/* ic_conn pointer */
 	struct socket	*sock;
-        struct mbuf_head iscsi_rcv_mbufq;/* rx - ULP mbufs */
-        struct mbuf_head ulp2_writeq;	 /* tx - ULP mbufs */
-        struct mbuf_head ulp2_wrq;	 /* tx wr- ULP mbufs */
+	struct mbuf_head iscsi_rcv_mbufq;/* rx - ULP mbufs */
+	struct mbuf_head ulp2_writeq;	 /* tx - ULP mbufs */
+	struct mbuf_head ulp2_wrq;	 /* tx wr- ULP mbufs */
 
 	struct mbuf *mbuf_ulp_lhdr;
 	struct mbuf *mbuf_ulp_ldata;
@@ -109,21 +109,21 @@ enum {
  * etc.
  */
 struct ulp_mbuf_cb {
-        uint8_t ulp_mode;                    /* ULP mode/submode of sk_buff */
-        uint8_t flags;                       /* TCP-like flags */
-        uint32_t seq;                        /* TCP sequence number */
-        union { /* ULP-specific fields */
-                struct {
-                        uint32_t ddigest;    /* ULP rx_data_ddp selected field*/
-                        uint32_t pdulen;     /* ULP rx_data_ddp selected field*/
-                } iscsi;
-                struct {
-                        uint32_t offset;     /* ULP DDP offset notification */
-                        uint8_t flags;       /* ULP DDP flags ... */
-                } ddp;
-        } ulp;
-        uint8_t ulp_data[16];                /* scratch area for ULP */
-        void *pdu;                      /* pdu pointer */
+	uint8_t ulp_mode;                    /* ULP mode/submode of sk_buff */
+	uint8_t flags;                       /* TCP-like flags */
+	uint32_t seq;                        /* TCP sequence number */
+	union { /* ULP-specific fields */
+		struct {
+			uint32_t ddigest;    /* ULP rx_data_ddp selected field*/
+			uint32_t pdulen;     /* ULP rx_data_ddp selected field*/
+		} iscsi;
+		struct {
+			uint32_t offset;     /* ULP DDP offset notification */
+			uint8_t flags;       /* ULP DDP flags ... */
+		} ddp;
+	} ulp;
+	uint8_t ulp_data[16];                /* scratch area for ULP */
+	void *pdu;                      /* pdu pointer */
 };
 
 /* private data for eack scsi task */

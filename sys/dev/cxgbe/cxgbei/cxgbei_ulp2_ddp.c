@@ -57,7 +57,7 @@
 
 static inline int
 cxgbei_counter_dec_and_read(volatile int *p)
-{	
+{
 	atomic_subtract_acq_int(p, 1);
 	return atomic_load_acq_int(p);
 }
@@ -65,15 +65,15 @@ cxgbei_counter_dec_and_read(volatile int *p)
 static inline int
 get_order(unsigned long size)
 {
-        int order;
+	int order;
 
-        size = (size - 1) >> PAGE_SHIFT;
-        order = 0;
-        while (size) {
-                order++;
-                size >>= 1;
-        }
-        return (order);
+	size = (size - 1) >> PAGE_SHIFT;
+	order = 0;
+	while (size) {
+		order++;
+		size >>= 1;
+	}
+	return (order);
 }
 
 /*
@@ -106,7 +106,7 @@ ulp2_dma_tag_create(struct cxgbei_ulp2_ddp_info *ddp)
 			"failed (rc = %d)!\n",
 			__FILE__, __LINE__, rc);
 		return rc;
-        }
+	}
 	return 0;
 }
 
@@ -210,7 +210,7 @@ cxgbei_ulp2_ddp_adjust_page_table(void)
 	return 0;
 }
 
-	
+
 static inline void
 ddp_gl_unmap(struct toedev *tdev,
 		struct cxgbei_ulp2_gather_list *gl)
@@ -617,19 +617,18 @@ ddp_init(void *tdev,
 	ppmax = (1 << (bits - 1)) - 1;
 
 	ddp = cxgbei_ulp2_alloc_big_mem(sizeof(struct cxgbei_ulp2_ddp_info) +
-			ppmax * (sizeof(struct cxgbei_ulp2_gather_list *) +
-			sizeof(struct mbuf*)));
+                        ppmax * (sizeof(struct cxgbei_ulp2_gather_list *) +
+                        sizeof(unsigned char)));
 	if (ddp == NULL) {
 		CTR1(KTR_CXGBE, "unable to alloc ddp 0x%d, ddp disabled.\n",
 			     ppmax);
 		return;
 	}
-	//ddp->colors = (unsigned char *)(ddp + 1);
-	ddp->gl_map = (struct cxgbei_ulp2_gather_list **)(ddp + 1);
+	ddp->colors = (unsigned char *)(ddp + 1);
+	ddp->gl_map = (struct cxgbei_ulp2_gather_list **)(ddp->colors +
+			ppmax * sizeof(unsigned char));
 	*ddp_pp = ddp;
 
-	//ddp->gl_map = (struct cxgbei_ulp2_gather_list **)(ddp->colors +
-	//		ppmax * sizeof(unsigned char));
 	mtx_init(&ddp->map_lock, "ddp lock", NULL,
 			MTX_DEF | MTX_DUPOK| MTX_RECURSE);
 

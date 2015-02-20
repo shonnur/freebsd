@@ -72,4 +72,3 @@ Loading iscsi-target:
 1. service ctld onestart
 2. kldload cxgbei
 3. Login from initiator.
-

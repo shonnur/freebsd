@@ -52,7 +52,7 @@ struct ulp_iscsi_info {
 };
 
 /*
- * struct cxgbei_ulp2_tag_format - cxgb3i ulp tag format for an iscsi entity
+ * struct cxgbei_ulp2_tag_format - cxgbei ulp tag format for an iscsi entity
  *
  * @sw_bits:	# of bits used by iscsi software layer
  * @rsvd_bits:	# of bits used by h/w
@@ -61,7 +61,7 @@ struct ulp_iscsi_info {
  */
 typedef struct cxgbei_ulp2_tag_format {
 	unsigned char sw_bits;
-	unsigned char rsvd_bits; 
+	unsigned char rsvd_bits;
 	unsigned char rsvd_shift;
 	unsigned char filler[1];
 	uint32_t rsvd_mask;
@@ -128,7 +128,7 @@ cxgbei_ulp2_set_non_ddp_tag(struct cxgbei_ulp2_tag_format *tformat,
                 return v2 | (1 << (rsvd_bits - 1)) | v1;
         }
 
-        return sw_tag | (1 << (rsvd_bits - 1)) ;
+	return sw_tag | (1 << (rsvd_bits - 1)) ;
 }
 
 struct dma_segments {
@@ -209,43 +209,8 @@ struct cxgbei_ulp2_ddp_info {
 	struct mtx map_lock;
 	bus_dma_tag_t ulp_ddp_tag;
 	bus_dmamap_t ulp_ddp_map;
+	unsigned char *colors;
 	struct cxgbei_ulp2_gather_list **gl_map;
-};
-static inline uint32_t
-cxgbei_ulp2_ddp_tag_base(unsigned int idx, struct cxgbei_ulp2_ddp_info *ddp, 
-			struct cxgbei_ulp2_tag_format *tformat, uint32_t sw_tag)
-{
-        sw_tag <<= (tformat->rsvd_bits + tformat->rsvd_shift);
-
-        return sw_tag | (idx << 6);
-}
-
-#define ISCSI_PDU_NONPAYLOAD_LEN	312 /* bhs(48) + ahs(256) + digest(8) */
-
-/*
- * align pdu size to multiple of 512 for better performance
- */
-#define cxgbei_align_pdu_size(n) do { n = (n) & (~511); } while (0)
-
-#define ULP2_MAX_PKT_SIZE	16224
-#define ULP2_MAX_PDU_PAYLOAD	(ULP2_MAX_PKT_SIZE - ISCSI_PDU_NONPAYLOAD_LEN)
-#define IPPOD_PAGES_MAX		4
-#define IPPOD_PAGES_SHIFT	2	/* 4 pages per pod */
-
-/*
- * struct pagepod_hdr, pagepod - pagepod format
- */
-struct cxgbei_ulp2_pagepod_hdr {
-	uint32_t vld_tid;
-	uint32_t pgsz_tag_clr;
-	uint32_t maxoffset;
-	uint32_t pgoffset;
-	uint64_t rsvd;
-};
-
-struct cxgbei_ulp2_pagepod {
-	struct cxgbei_ulp2_pagepod_hdr hdr;
-	uint64_t addr[IPPOD_PAGES_MAX + 1];
 };
 
 #define IPPOD_SIZE		sizeof(struct cxgbei_ulp2_pagepod) /* 64 */
@@ -278,6 +243,47 @@ struct cxgbei_ulp2_pagepod {
 #define M_IPPOD_PGSZ    0x3
 #define V_IPPOD_PGSZ(x) ((x) << S_IPPOD_PGSZ)
 
+static inline uint32_t
+cxgbei_ulp2_ddp_tag_base(unsigned int idx, struct cxgbei_ulp2_ddp_info *ddp,
+			struct cxgbei_ulp2_tag_format *tformat, uint32_t sw_tag)
+{
+	ddp->colors[idx]++;
+	if (ddp->colors[idx] == (1 << IPPOD_IDX_SHIFT))
+		ddp->colors[idx] = 0;
+
+	sw_tag <<= (tformat->rsvd_bits + tformat->rsvd_shift);
+
+	return sw_tag | (idx << 6) | ddp->colors[idx];
+}
+
+#define ISCSI_PDU_NONPAYLOAD_LEN	312 /* bhs(48) + ahs(256) + digest(8) */
+
+/*
+ * align pdu size to multiple of 512 for better performance
+ */
+#define cxgbei_align_pdu_size(n) do { n = (n) & (~511); } while (0)
+
+#define ULP2_MAX_PKT_SIZE	16224
+#define ULP2_MAX_PDU_PAYLOAD	(ULP2_MAX_PKT_SIZE - ISCSI_PDU_NONPAYLOAD_LEN)
+#define IPPOD_PAGES_MAX		4
+#define IPPOD_PAGES_SHIFT	2	/* 4 pages per pod */
+
+/*
+ * struct pagepod_hdr, pagepod - pagepod format
+ */
+struct cxgbei_ulp2_pagepod_hdr {
+	uint32_t vld_tid;
+	uint32_t pgsz_tag_clr;
+	uint32_t maxoffset;
+	uint32_t pgoffset;
+	uint64_t rsvd;
+};
+
+struct cxgbei_ulp2_pagepod {
+	struct cxgbei_ulp2_pagepod_hdr hdr;
+	uint64_t addr[IPPOD_PAGES_MAX + 1];
+};
+
 /*
  * ddp page size array
  */
@@ -295,7 +301,7 @@ cxgbei_ulp2_alloc_big_mem(unsigned int size)
 {
 	void *p = NULL;
 
- 	p =  malloc(size, M_TEMP, M_NOWAIT | M_ZERO);
+	p =  malloc(size, M_TEMP, M_NOWAIT | M_ZERO);
 
 	return p;
 }
