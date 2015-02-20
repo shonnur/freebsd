@@ -50,7 +50,9 @@ typedef struct iscsi_socket {
 	void            *s_appdata;     /* upperlayer data pointer */
 	void            *s_private;     /* underlying socket related info. */
 	void            *s_conn;	/* ic_conn pointer */
+	unsigned int	state;
 	struct socket	*sock;
+	struct mtx   lock;
 	struct mbuf_head iscsi_rcv_mbufq;/* rx - ULP mbufs */
 	struct mbuf_head ulp2_writeq;	 /* tx - ULP mbufs */
 	struct mbuf_head ulp2_wrq;	 /* tx wr- ULP mbufs */
@@ -103,6 +105,12 @@ enum {
 	CPL_RET_UNKNOWN_TID = 4	/* unexpected unknown TID */
 };
 
+/* connection states */
+enum {
+	ISOCK_INITIALIZED,
+	ISOCK_CLOSING,
+	ISOCK_CONNECTED
+};
 
 /*
  * Similar to tcp_skb_cb but with ULP elements added to support DDP, iSCSI,

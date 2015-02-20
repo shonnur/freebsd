@@ -684,18 +684,22 @@ process_rx_iscsi_hdr(struct socket *sk, struct mbuf *m)
 	iscsi_socket *isock = (iscsi_socket *)(sk)->so_emuldata;
 	unsigned int hlen, dlen, plen;
 
-	if (isock == NULL)
+	if (isock == NULL || isock->state < ISOCK_CONNECTED) {
+		tp->rcv_nxt += ntohs(cpl->len); 
 		goto err_out;
+	}
 
 	if (toep == NULL)
 		goto err_out;
+
 	if ((m->m_flags & M_PKTHDR) == 0) {
 		printf("%s: m:%p no M_PKTHDR can't allocate m_tag\n",
 				__func__, m);
 		goto err_out;
 	}
 
-	mtx_lock(&isock->iscsi_rcv_mbufq.lock);
+	mtx_lock(&isock->lock);
+	//mtx_lock(&isock->iscsi_rcv_mbufq.lock);
 
 	/* allocate m_tag to hold ulp info */
 	cb = get_ulp_mbuf_cb(m);
@@ -735,6 +739,8 @@ process_rx_iscsi_hdr(struct socket *sk, struct mbuf *m)
 		if (dlen)
 			lcb->ulp.iscsi.pdulen += isock->s_dcrc_len;
 
+		//printf("%s: tp->rcv_nxt:%u pdulen:%u new rcv_nxt:%u\n",
+		//	__func__, tp->rcv_nxt, lcb->ulp.iscsi.pdulen, (tp->rcv_nxt + lcb->ulp.iscsi.pdulen));
 		tp->rcv_nxt += lcb->ulp.iscsi.pdulen;
 		if (tp->rcv_wnd <= lcb->ulp.iscsi.pdulen)
 			CTR3(KTR_CXGBE, "%s: Neg rcv_wnd:0x%lx pdulen:0x%x\n",
@@ -758,11 +764,13 @@ process_rx_iscsi_hdr(struct socket *sk, struct mbuf *m)
 		}
 	}
 	mbufq_tail(&isock->iscsi_rcv_mbufq, m);
-	mtx_unlock(&isock->iscsi_rcv_mbufq.lock);
+	//mtx_unlock(&isock->iscsi_rcv_mbufq.lock);
+	mtx_unlock(&isock->lock);
 	return;
 
 err_out1:
-	mtx_unlock(&isock->iscsi_rcv_mbufq.lock);
+	//mtx_unlock(&isock->iscsi_rcv_mbufq.lock);
+	mtx_unlock(&isock->lock);
 err_out:
 	m_freem(m);
 	return;
@@ -816,10 +824,12 @@ iscsi_conn_receive_pdu(struct iscsi_socket *isock)
 		/* Data is DDP'ed */
 		response->ip_ofld_prv0 = 1;
 	}
+	mtx_unlock(&isock->lock);
 	(ic->ic_receive)(response);
 	return;
 
 err_out:
+	mtx_unlock(&isock->lock);
 	icl_pdu_free(response);
 	return;
 }
@@ -836,7 +846,7 @@ process_rx_data_ddp(struct socket *sk, void *m)
 	unsigned int val, pdulen;
 	iscsi_socket *isock = (iscsi_socket *)(sk)->so_emuldata;
 
-	if (isock == NULL)
+	if (isock == NULL || isock->state < ISOCK_CONNECTED)
 		return;
 
 	if (isock->mbuf_ulp_lhdr == NULL) {
@@ -844,7 +854,8 @@ process_rx_data_ddp(struct socket *sk, void *m)
 				__func__, toep->tid);
 		return;
 	}
-	mtx_lock(&isock->iscsi_rcv_mbufq.lock);
+	mtx_lock(&isock->lock);
+	//mtx_lock(&isock->iscsi_rcv_mbufq.lock);
 	lmbuf = isock->mbuf_ulp_lhdr;
 	if (lmbuf->m_nextpkt) {
 		lcb1 = find_ulp_mbuf_cb(lmbuf->m_nextpkt);
@@ -853,7 +864,8 @@ process_rx_data_ddp(struct socket *sk, void *m)
 	lcb = find_ulp_mbuf_cb(isock->mbuf_ulp_lhdr);
 	if (lcb == NULL) {
 		CTR2(KTR_CXGBE, "%s: mtag NULL lmbuf :%p\n", __func__, lmbuf);
-		mtx_unlock(&isock->iscsi_rcv_mbufq.lock);
+		//mtx_unlock(&isock->iscsi_rcv_mbufq.lock);
+		mtx_unlock(&isock->lock);
 		return;
 	}
 	lcb->flags |= SBUF_ULP_FLAG_STATUS_RCVD;
@@ -910,7 +922,8 @@ process_rx_data_ddp(struct socket *sk, void *m)
 #endif
 
 	iscsi_conn_receive_pdu(isock);
-	mtx_unlock(&isock->iscsi_rcv_mbufq.lock);
+	//mtx_unlock(&isock->iscsi_rcv_mbufq.lock);
+	//mtx_unlock(&isock->lock);
 
 	/* update rx credits */
 	INP_WLOCK(inp);
@@ -934,8 +947,15 @@ drop_fw_acked_ulp_data(struct socket *sk, struct toepcb *toep, int len)
 
 	if (len == 0 || (isock == NULL))
 		return;
+ 
+	mtx_lock(&isock->lock);
+	if (isock->state < ISOCK_CONNECTED)
+		goto out;
 
-	mtx_lock(&isock->ulp2_wrq.lock);
+	if (mbufq_len(&isock->ulp2_wrq) == 0)
+		goto out;
+
+	//mtx_lock(&isock->ulp2_wrq.lock);
 	while (len > 0) {
 		m = mbufq_dequeue(&isock->ulp2_wrq);
 		if(m == NULL) break;
@@ -952,7 +972,9 @@ drop_fw_acked_ulp_data(struct socket *sk, struct toepcb *toep, int len)
 		}
 		m_freem(m);
 	}
-	mtx_unlock(&isock->ulp2_wrq.lock);
+	//mtx_unlock(&isock->ulp2_wrq.lock);
+out:
+	mtx_unlock(&isock->lock);
 	return;
 }
 
@@ -1022,15 +1044,18 @@ t4_ulp_mbuf_push(struct socket *so, struct mbuf *m)
 	struct inpcb *inp = so_sotoinpcb(so);
 	iscsi_socket *isock = (iscsi_socket *)(so)->so_emuldata;;
 
-	if (isock == NULL) {
+	mtx_lock(&isock->lock);
+	if (isock == NULL || isock->state < ISOCK_CONNECTED) {
 		m_freem(m);
+		mtx_unlock(&isock->lock);
 		return EINVAL;
 	}
 
 	/* append mbuf to ULP queue */
-	mtx_lock(&isock->ulp2_writeq.lock);
+	//mtx_lock(&isock->ulp2_writeq.lock);
 	mbufq_tail(&isock->ulp2_writeq, m);
-	mtx_unlock(&isock->ulp2_writeq.lock);
+	//mtx_unlock(&isock->ulp2_writeq.lock);
+	mtx_unlock(&isock->lock);
 
 	INP_WLOCK(inp);
 	t4_ulp_push_frames(toep->td->tod.tod_softc, toep, 0);
@@ -1050,6 +1075,10 @@ iscsi_queue_handler_callback(struct socket *sk, unsigned int cmd, int *qlen)
 	if (isock == NULL)
 		return NULL;
 
+	mtx_lock(&isock->lock);
+	if (isock->state < ISOCK_CONNECTED)
+		goto out;
+
 	switch (cmd) {
 		case 0:/* PEEK */
 			m0 = mbufq_peek(&isock->ulp2_writeq);
@@ -1059,17 +1088,19 @@ iscsi_queue_handler_callback(struct socket *sk, unsigned int cmd, int *qlen)
 			m0 = mbufq_peek(&isock->ulp2_writeq);
 		break;
 		case 2:/* DEQUEUE */
-			mtx_lock(&isock->ulp2_writeq.lock);
+			//mtx_lock(&isock->ulp2_writeq.lock);
 			m0 = mbufq_dequeue(&isock->ulp2_writeq);
-			mtx_unlock(&isock->ulp2_writeq.lock);
+			//mtx_unlock(&isock->ulp2_writeq.lock);
 
-			mtx_lock(&isock->ulp2_wrq.lock);
+			//mtx_lock(&isock->ulp2_wrq.lock);
 			mbufq_tail(&isock->ulp2_wrq, m0);
-			mtx_unlock(&isock->ulp2_wrq.lock);
+			//mtx_unlock(&isock->ulp2_wrq.lock);
 
 			m0 = mbufq_peek(&isock->ulp2_writeq);
 		break;
 	}
+out:
+	mtx_unlock(&isock->lock);
 	return m0;
 }
 
@@ -1342,6 +1373,7 @@ cxgbei_conn_set_ulp_mode(struct socket *so, void *conn)
 	}
 	sc = toep->port->adapter;
 	tdev = &toep->td->tod;
+
 	/* if toe dev is not set, treat it as non-offloaded */
 	if (tdev == NULL) {
 		CTR2(KTR_CXGBE, "%s: T4 sk 0x%p, tdev NULL.\n", __func__, so);
@@ -1358,8 +1390,10 @@ cxgbei_conn_set_ulp_mode(struct socket *so, void *conn)
 	isock->sock = so;
 	isock->s_conn = conn;
 	so->so_emuldata = isock;
+	isock->state = ISOCK_INITIALIZED;
 
-	mtx_init(&isock->iscsi_rcv_mbufq.lock,"isock_lock" , NULL, MTX_DEF);
+	mtx_init(&isock->lock, "isock_lock" , NULL, MTX_DEF);
+	mtx_init(&isock->iscsi_rcv_mbufq.lock,"ulp2_rcv_lock" , NULL, MTX_DEF);
 	mtx_init(&isock->ulp2_wrq.lock,"ulp2_wrq lock" , NULL, MTX_DEF);
 	mtx_init(&isock->ulp2_writeq.lock,"ulp2_writeq lock" , NULL, MTX_DEF);
 
@@ -1409,6 +1443,7 @@ cxgbei_conn_set_ulp_mode(struct socket *so, void *conn)
 
 	isock->s_hcrc_len = (ic->ic_header_crc32c ? 4 : 0);
 	isock->s_dcrc_len = (ic->ic_data_crc32c ? 4 : 0);
+	isock->state = ISOCK_CONNECTED;
 	return 0;
 }
 
@@ -1421,6 +1456,8 @@ cxgbei_conn_close(struct socket *so)
 	struct ulp_mbuf_cb *cb;
 	struct icl_pdu *req;
 
+	mtx_lock(&isock->lock);
+	isock->state = ISOCK_CLOSING;
 	so->so_emuldata = NULL;
 
 	/* free isock Qs */
@@ -1430,7 +1467,7 @@ cxgbei_conn_close(struct socket *so)
 	while ((m = mbufq_dequeue(&isock->ulp2_writeq)) != NULL)
 		m_freem(m);
 
-	mtx_lock(&isock->ulp2_wrq.lock);
+	//mtx_lock(&isock->ulp2_wrq.lock);
 	while ((m = mbufq_dequeue(&isock->ulp2_wrq)) != NULL) {
 		cb = find_ulp_mbuf_cb(m);
 		if (cb && isock && cb->pdu) {
@@ -1440,7 +1477,7 @@ cxgbei_conn_close(struct socket *so)
 		}
 		m_freem(m);
 	}
-	mtx_unlock(&isock->ulp2_wrq.lock);
+	//mtx_unlock(&isock->ulp2_wrq.lock);
 
 	if (mtx_initialized(&isock->iscsi_rcv_mbufq.lock))
 		mtx_destroy(&isock->iscsi_rcv_mbufq.lock);
@@ -1451,6 +1488,9 @@ cxgbei_conn_close(struct socket *so)
 	if (mtx_initialized(&isock->ulp2_writeq.lock))
 		mtx_destroy(&isock->ulp2_writeq.lock);
 
+	mtx_unlock(&isock->lock);
+
+	mtx_destroy(&isock->lock);
 	free(isock, M_CXGBE);
 
 	return 0;
