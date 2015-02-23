@@ -109,6 +109,7 @@ enum {
 enum {
 	ISOCK_INITIALIZED,
 	ISOCK_CLOSING,
+	ISOCK_CLOSED,
 	ISOCK_CONNECTED
 };
 
@@ -158,7 +159,8 @@ enum {
 
 struct ulp_mbuf_cb * get_ulp_mbuf_cb(struct mbuf *);
 int cxgbei_conn_set_ulp_mode(struct socket *, void *);
-int cxgbei_conn_close(struct socket *);
+int cxgbei_set_conn_for_close(struct socket *);
+int cxgbei_conn_close(void *);
 void cxgbei_conn_task_reserve_itt(void *, void **, void *, unsigned int *);
 void cxgbei_conn_transfer_reserve_ttt(void *, void **, void *, unsigned int *);
 void cxgbei_cleanup_task(void *, void *);

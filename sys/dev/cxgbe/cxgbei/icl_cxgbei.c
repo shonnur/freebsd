@@ -580,6 +580,7 @@ void
 icl_cxgbei_conn_close(struct icl_conn *ic)
 {
 	struct icl_pdu *pdu;
+	void *sock_priv = NULL;
 
 	ICL_CONN_LOCK_ASSERT_NOT(ic);
 
@@ -617,8 +618,10 @@ icl_cxgbei_conn_close(struct icl_conn *ic)
 	//ICL_DEBUG("send/receive threads terminated");
 
 	ICL_CONN_UNLOCK(ic);
-	cxgbei_conn_close(ic->ic_socket);
+	sock_priv = ic->ic_socket->so_emuldata;
+	cxgbei_set_conn_for_close(ic->ic_socket);
 	soclose(ic->ic_socket);
+	cxgbei_conn_close(sock_priv);
 	ICL_CONN_LOCK(ic);
 	ic->ic_socket = NULL;
 

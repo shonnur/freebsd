@@ -938,15 +938,11 @@ drop_fw_acked_ulp_data(struct socket *sk, struct toepcb *toep, int len)
 	iscsi_socket *isock = (iscsi_socket *)(sk)->so_emuldata;
 	struct icl_pdu *req;
 
-	if (len == 0 || (isock == NULL)) {
-		printf("%s: so:%p isock:%p len:%d\n", __func__, sk, isock, len);
+	if (len == 0 || (isock == NULL))
 		return;
-	}
  
-	if (isock->state < ISOCK_CONNECTED) {
-		printf("%s: so:%p isock:%p state:%d\n", __func__, sk, isock, isock->state);
+	if (isock->state < ISOCK_CONNECTED)
 		return;
-	}
 
 	if (mbufq_len(&isock->ulp2_wrq) == 0)
 		return;
@@ -1036,7 +1032,7 @@ t4_ulp_mbuf_push(struct socket *so, struct mbuf *m)
 	struct tcpcb *tp = so_sototcpcb(so);
 	struct toepcb *toep = tp->t_toe;
 	struct inpcb *inp = so_sotoinpcb(so);
-	iscsi_socket *isock = (iscsi_socket *)(so)->so_emuldata;;
+	iscsi_socket *isock = (iscsi_socket *)(so)->so_emuldata;
 
 	mtx_lock(&isock->lock);
 	if (isock == NULL || isock->state < ISOCK_CONNECTED) {
@@ -1433,17 +1429,15 @@ cxgbei_conn_set_ulp_mode(struct socket *so, void *conn)
 }
 
 int
-cxgbei_conn_close(struct socket *so)
+cxgbei_conn_close(void *s)
 {
-	iscsi_socket *isock = NULL;
-	isock = (iscsi_socket *)(so)->so_emuldata;
+	iscsi_socket *isock = (iscsi_socket *)s;
 	struct mbuf *m;
 	struct ulp_mbuf_cb *cb;
 	struct icl_pdu *req;
 
-	mtx_lock(&isock->lock);
-	isock->state = ISOCK_CLOSING;
-	so->so_emuldata = NULL;
+	if (isock == NULL)
+		return EINVAL;
 
 	/* free isock Qs */
 	while ((m = mbufq_dequeue(&isock->ulp2_rcvq)) != NULL)
@@ -1462,11 +1456,23 @@ cxgbei_conn_close(struct socket *so)
 		m_freem(m);
 	}
 
-	so->so_emuldata = NULL;
-	mtx_unlock(&isock->lock);
-
 	mtx_destroy(&isock->lock);
 	free(isock, M_CXGBE);
+	return 0;
+}
+int
+cxgbei_set_conn_for_close(struct socket *so)
+{
+	iscsi_socket *isock = NULL;
+	isock = (iscsi_socket *)(so)->so_emuldata;
+
+	if (isock == NULL)
+		return EINVAL;
+
+	mtx_lock(&isock->lock);
+	isock->state = ISOCK_CLOSING;
+	so->so_emuldata = NULL;
+	mtx_unlock(&isock->lock);
 
 	return 0;
 }
