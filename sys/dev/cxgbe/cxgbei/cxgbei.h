@@ -53,9 +53,9 @@ typedef struct iscsi_socket {
 	unsigned int	state;
 	struct socket	*sock;
 	struct mtx   lock;
-	struct mbuf_head iscsi_rcv_mbufq;/* rx - ULP mbufs */
-	struct mbuf_head ulp2_writeq;	 /* tx - ULP mbufs */
-	struct mbuf_head ulp2_wrq;	 /* tx wr- ULP mbufs */
+	struct mbuf_head ulp2_rcvq;	/* rx - ULP mbufs */
+	struct mbuf_head ulp2_writeq;	/* tx - ULP mbufs */
+	struct mbuf_head ulp2_wrq;	/* tx wr- ULP mbufs */
 
 	struct mbuf *mbuf_ulp_lhdr;
 	struct mbuf *mbuf_ulp_ldata;
