@@ -945,17 +945,20 @@ drop_fw_acked_ulp_data(struct socket *sk, struct toepcb *toep, int len)
 	iscsi_socket *isock = (iscsi_socket *)(sk)->so_emuldata;
 	struct icl_pdu *req;
 
-	if (len == 0 || (isock == NULL))
+	if (len == 0 || (isock == NULL)) {
+		printf("%s: so:%p isock:%p len:%d\n", __func__, sk, isock, len);
 		return;
+	}
  
-	mtx_lock(&isock->lock);
-	if (isock->state < ISOCK_CONNECTED)
-		goto out;
+	if (isock->state < ISOCK_CONNECTED) {
+		printf("%s: so:%p isock:%p state:%d\n", __func__, sk, isock, isock->state);
+		return;
+	}
 
 	if (mbufq_len(&isock->ulp2_wrq) == 0)
-		goto out;
+		return;
 
-	//mtx_lock(&isock->ulp2_wrq.lock);
+	mtx_lock(&isock->lock);
 	while (len > 0) {
 		m = mbufq_dequeue(&isock->ulp2_wrq);
 		if(m == NULL) break;
@@ -972,8 +975,6 @@ drop_fw_acked_ulp_data(struct socket *sk, struct toepcb *toep, int len)
 		}
 		m_freem(m);
 	}
-	//mtx_unlock(&isock->ulp2_wrq.lock);
-out:
 	mtx_unlock(&isock->lock);
 	return;
 }
@@ -1488,6 +1489,7 @@ cxgbei_conn_close(struct socket *so)
 	if (mtx_initialized(&isock->ulp2_writeq.lock))
 		mtx_destroy(&isock->ulp2_writeq.lock);
 
+	so->so_emuldata = NULL;
 	mtx_unlock(&isock->lock);
 
 	mtx_destroy(&isock->lock);
